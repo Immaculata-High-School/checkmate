@@ -238,8 +238,8 @@
                         <input
                           type="radio"
                           name="tf-{qIndex}"
-                          checked={question.correctAnswer === 'true'}
-                          onchange={() => (question.correctAnswer = 'true')}
+                          checked={question.correctAnswer?.toLowerCase() === 'true'}
+                          onchange={() => (question.correctAnswer = 'True')}
                           class="w-4 h-4"
                         />
                         True
@@ -248,8 +248,8 @@
                         <input
                           type="radio"
                           name="tf-{qIndex}"
-                          checked={question.correctAnswer === 'false'}
-                          onchange={() => (question.correctAnswer = 'false')}
+                          checked={question.correctAnswer?.toLowerCase() === 'false'}
+                          onchange={() => (question.correctAnswer = 'False')}
                           class="w-4 h-4"
                         />
                         False

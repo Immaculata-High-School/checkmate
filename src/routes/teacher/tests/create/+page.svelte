@@ -353,11 +353,12 @@
                     {#if question.options?.length > 0}
                       <div class="mt-3 space-y-2">
                         {#each question.options as option, optIndex}
+                          {@const isCorrect = option?.toLowerCase() === question.correctAnswer?.toLowerCase()}
                           <div class="flex items-center gap-2">
-                            <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold {option === question.correctAnswer ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}">
+                            <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold {isCorrect ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}">
                               {String.fromCharCode(65 + optIndex)}
                             </span>
-                            <span class="{option === question.correctAnswer ? 'text-green-700 font-medium' : 'text-gray-600'}">{option}</span>
+                            <span class="{isCorrect ? 'text-green-700 font-medium' : 'text-gray-600'}">{option}</span>
                           </div>
                         {/each}
                       </div>

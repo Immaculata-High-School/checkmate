@@ -348,6 +348,20 @@ CRITICAL: Return ONLY the JSON array with exactly ${params.numberOfQuestions} qu
       questions = questions.slice(0, params.numberOfQuestions);
     }
 
+    // Normalize TRUE_FALSE questions to ensure correctAnswer matches options exactly
+    questions.forEach((q) => {
+      if (q.type === 'TRUE_FALSE') {
+        // Ensure options are set correctly
+        q.options = ['True', 'False'];
+        // Normalize correctAnswer to match options exactly (case-insensitive check)
+        if (q.correctAnswer?.toLowerCase() === 'true') {
+          q.correctAnswer = 'True';
+        } else if (q.correctAnswer?.toLowerCase() === 'false') {
+          q.correctAnswer = 'False';
+        }
+      }
+    });
+
     // Recalculate points if totalPoints was specified to ensure correct distribution
     if (params.totalPoints && params.totalPoints > 0 && questions.length > 0) {
       const currentTotal = questions.reduce((sum, q) => sum + (q.points || 0), 0);
