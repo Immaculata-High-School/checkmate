@@ -38,6 +38,8 @@
     showResultsImmediately: data.test.showResultsImmediately,
     showCorrectAnswers: data.test.showCorrectAnswers,
     aiOpenEndedGrading: data.test.aiOpenEndedGrading,
+    aiPartialCredit: (data.test as any).aiPartialCredit ?? true,
+    aiGradingHarshness: (data.test as any).aiGradingHarshness ?? 50,
     maxAttempts: data.test.maxAttempts,
     allowLateSubmission: data.test.allowLateSubmission,
     latePenaltyPercent: data.test.latePenaltyPercent,
@@ -151,6 +153,8 @@
     <input type="hidden" name="showResultsImmediately" value={settings.showResultsImmediately} />
     <input type="hidden" name="showCorrectAnswers" value={settings.showCorrectAnswers} />
     <input type="hidden" name="aiOpenEndedGrading" value={settings.aiOpenEndedGrading} />
+    <input type="hidden" name="aiPartialCredit" value={settings.aiPartialCredit} />
+    <input type="hidden" name="aiGradingHarshness" value={settings.aiGradingHarshness} />
     <input type="hidden" name="maxAttempts" value={settings.maxAttempts} />
     <input type="hidden" name="allowLateSubmission" value={settings.allowLateSubmission} />
     <input type="hidden" name="latePenaltyPercent" value={settings.latePenaltyPercent} />

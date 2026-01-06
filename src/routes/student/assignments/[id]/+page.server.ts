@@ -297,11 +297,10 @@ export const actions: Actions = {
       return fail(400, { error: 'No active submission' });
     }
 
-    // Calculate score for auto-gradable questions
-    let score = 0;
+    // Collect all answers for potential AI grading
     let totalPoints = 0;
     let needsManualGrading = false;
-    const openEndedAnswers: {
+    const allAnswers: {
       id: string;
       question: string;
       correctAnswer: string;
@@ -316,54 +315,54 @@ export const actions: Actions = {
 
       if (!answer) continue;
 
-      // Auto-grade objective questions
-      if (['MULTIPLE_CHOICE', 'TRUE_FALSE'].includes(question.type)) {
-        const isCorrect = answer.answer?.toLowerCase().trim() === question.correctAnswer?.toLowerCase().trim();
-        await prisma.answer.update({
-          where: { id: answer.id },
-          data: {
-            isCorrect,
-            pointsAwarded: isCorrect ? question.points : 0
-          }
-        });
-        if (isCorrect) score += question.points;
-      } else if (question.type === 'FILL_IN_BLANK' || question.type === 'SHORT_ANSWER') {
-        // Simple exact match for fill in blank
-        const correctAnswers = question.correctAnswer?.split('|').map(a => a.toLowerCase().trim()) || [];
-        const isCorrect = correctAnswers.includes(answer.answer?.toLowerCase().trim() || '');
-        await prisma.answer.update({
-          where: { id: answer.id },
-          data: {
-            isCorrect,
-            pointsAwarded: isCorrect ? question.points : 0
-          }
-        });
-        if (isCorrect) score += question.points;
-      } else {
-        // Long answer, essay - collect for AI grading if enabled
+      // Collect for AI grading
+      allAnswers.push({
+        id: answer.id,
+        question: question.question,
+        correctAnswer: question.correctAnswer || '',
+        studentAnswer: answer.answer || '',
+        questionType: question.type,
+        points: question.points
+      });
+
+      // Mark if manual grading would be needed (for fallback)
+      if (!['MULTIPLE_CHOICE', 'TRUE_FALSE', 'FILL_IN_BLANK', 'SHORT_ANSWER'].includes(question.type)) {
         needsManualGrading = true;
-        openEndedAnswers.push({
-          id: answer.id,
-          question: question.question,
-          correctAnswer: question.correctAnswer || '',
-          studentAnswer: answer.answer || '',
-          questionType: question.type,
-          points: question.points
-        });
       }
     }
 
-    // If AI grading is enabled and there are open-ended questions, use AI
-    if (submission.test.aiOpenEndedGrading && openEndedAnswers.length > 0) {
+    // If AI grading is enabled, use AI for all questions to get comprehensive feedback
+    if (submission.test.aiOpenEndedGrading && allAnswers.length > 0) {
       try {
         // Get teacher's org membership for AI tracking
         const membership = await prisma.organizationMember.findFirst({
           where: { userId: submission.test.teacherId }
         });
 
+        // Create AI job for tracking
+        const job = await prisma.aIJob.create({
+          data: {
+            type: 'TEST_GRADING',
+            status: 'RUNNING',
+            input: {
+              testTitle: submission.test.title,
+              submissionId: submission.id,
+              studentId: locals.user!.id,
+              questionCount: allAnswers.length
+            },
+            entityId: submission.test.id,
+            entityType: 'TEST',
+            userId: submission.test.teacherId,
+            orgId: membership?.organizationId,
+            startedAt: new Date()
+          }
+        });
+
         const result = await shuttleAI.gradeTestComprehensive({
           testTitle: submission.test.title,
-          answers: openEndedAnswers
+          answers: allAnswers,
+          allowPartialCredit: (submission.test as any).aiPartialCredit ?? true,
+          gradingHarshness: (submission.test as any).aiGradingHarshness ?? 50
         }, { userId: submission.test.teacherId, orgId: membership?.organizationId });
 
         // Update each answer with AI grading
@@ -376,16 +375,31 @@ export const actions: Actions = {
               feedback: gradedAnswer.feedback
             }
           });
-          score += gradedAnswer.pointsAwarded;
         }
+
+        // Update job as completed
+        await prisma.aIJob.update({
+          where: { id: job.id },
+          data: {
+            status: 'COMPLETED',
+            progress: 100,
+            output: {
+              totalScore: result.totalScore,
+              totalPoints: result.totalPoints,
+              gradedAnswersCount: result.gradedAnswers.length,
+              overallFeedback: result.overallFeedback
+            },
+            completedAt: new Date()
+          }
+        });
 
         // Update submission with AI grades
         await prisma.testSubmission.update({
           where: { id: submission.id },
           data: {
             status: 'GRADED',
-            score,
-            totalPoints,
+            score: result.totalScore,
+            totalPoints: result.totalPoints,
             feedback: result.overallFeedback,
             submittedAt: new Date(),
             gradedAt: new Date()
@@ -398,7 +412,70 @@ export const actions: Actions = {
         // If AI grading fails, fall back to manual grading
         if (err instanceof Response) throw err; // Re-throw redirects
         console.error('AI grading failed during submission:', err);
+        
+        // Try to update job as failed if it exists
+        try {
+          const failedJob = await prisma.aIJob.findFirst({
+            where: {
+              entityId: submission.test.id,
+              entityType: 'TEST',
+              type: 'TEST_GRADING',
+              status: 'RUNNING'
+            },
+            orderBy: { createdAt: 'desc' }
+          });
+          if (failedJob) {
+            await prisma.aIJob.update({
+              where: { id: failedJob.id },
+              data: {
+                status: 'FAILED',
+                error: err instanceof Error ? err.message : 'AI grading failed',
+                completedAt: new Date()
+              }
+            });
+          }
+        } catch {}
       }
+    }
+
+    // Fallback: manually grade objective questions when AI is not enabled or failed
+    let fallbackScore = 0;
+    for (const question of submission.test.questions) {
+      const answer = submission.answers.find(a => a.questionId === question.id);
+      if (!answer) continue;
+
+      // Check if already graded by AI
+      const existingAnswer = await prisma.answer.findUnique({ where: { id: answer.id } });
+      if (existingAnswer?.feedback) {
+        // Already graded by AI, add to score
+        fallbackScore += existingAnswer.pointsAwarded || 0;
+        continue;
+      }
+
+      // Auto-grade objective questions
+      if (['MULTIPLE_CHOICE', 'TRUE_FALSE'].includes(question.type)) {
+        const isCorrect = answer.answer?.toLowerCase().trim() === question.correctAnswer?.toLowerCase().trim();
+        await prisma.answer.update({
+          where: { id: answer.id },
+          data: {
+            isCorrect,
+            pointsAwarded: isCorrect ? question.points : 0
+          }
+        });
+        if (isCorrect) fallbackScore += question.points;
+      } else if (question.type === 'FILL_IN_BLANK' || question.type === 'SHORT_ANSWER') {
+        const correctAnswers = question.correctAnswer?.split('|').map(a => a.toLowerCase().trim()) || [];
+        const isCorrect = correctAnswers.includes(answer.answer?.toLowerCase().trim() || '');
+        await prisma.answer.update({
+          where: { id: answer.id },
+          data: {
+            isCorrect,
+            pointsAwarded: isCorrect ? question.points : 0
+          }
+        });
+        if (isCorrect) fallbackScore += question.points;
+      }
+      // Essay/Long answer will be left ungraded for manual review
     }
 
     // Update submission (fallback or no AI grading)
@@ -406,7 +483,7 @@ export const actions: Actions = {
       where: { id: submission.id },
       data: {
         status: needsManualGrading ? 'PENDING' : 'GRADED',
-        score,
+        score: fallbackScore,
         totalPoints,
         submittedAt: new Date(),
         gradedAt: needsManualGrading ? null : new Date()

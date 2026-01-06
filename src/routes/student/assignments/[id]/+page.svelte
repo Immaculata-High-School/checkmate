@@ -619,9 +619,19 @@
       <p class="text-gray-600 mb-4">
         Your answers are being submitted and graded. This may take a moment...
       </p>
-      <div class="flex items-center justify-center gap-2 text-sm text-gray-500">
+      <div class="flex items-center justify-center gap-2 text-sm text-gray-500 mb-6">
         <Loader2 class="w-4 h-4 animate-spin" />
         Please wait
+      </div>
+      <div class="border-t pt-4">
+        <p class="text-xs text-gray-500 mb-3">You can check back later for your results</p>
+        <a 
+          href="/student" 
+          class="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+        >
+          <ChevronLeft class="w-4 h-4" />
+          Back to Home
+        </a>
       </div>
     </div>
   </div>

@@ -177,7 +177,7 @@ export const actions: Actions = {
     });
 
     try {
-      // Use AI to grade the entire test
+      // Use AI to grade the entire test with test-specific settings
       const result = await shuttleAI.gradeTestComprehensive({
         testTitle: submission.test.title,
         answers: submission.answers.map(a => ({
@@ -187,7 +187,9 @@ export const actions: Actions = {
           studentAnswer: a.answer || '',
           questionType: a.question.type,
           points: a.question.points
-        }))
+        })),
+        allowPartialCredit: (submission.test as any).aiPartialCredit ?? true,
+        gradingHarshness: (submission.test as any).aiGradingHarshness ?? 50
       }, { userId: locals.user!.id, orgId: membership?.organizationId });
 
       // Update each answer with AI grading
@@ -266,7 +268,9 @@ export const actions: Actions = {
             studentAnswer: a.answer || '',
             questionType: a.question.type,
             points: a.question.points
-          }))
+          })),
+          allowPartialCredit: (test as any).aiPartialCredit ?? true,
+          gradingHarshness: (test as any).aiGradingHarshness ?? 50
         }, { userId: locals.user!.id, orgId: membership?.organizationId });
 
         // Update each answer with AI grading
@@ -403,5 +407,80 @@ export const actions: Actions = {
       console.error('Generate class feedback error:', err);
       return fail(500, { error: 'Failed to generate class feedback' });
     }
+  },
+
+  deleteSubmission: async ({ request, params, locals }) => {
+    const formData = await request.formData();
+    const submissionId = formData.get('submissionId')?.toString();
+
+    if (!submissionId) {
+      return fail(400, { error: 'Submission ID required' });
+    }
+
+    const submission = await prisma.testSubmission.findUnique({
+      where: { id: submissionId },
+      include: { test: true }
+    });
+
+    if (!submission) {
+      return fail(404, { error: 'Submission not found' });
+    }
+
+    if (submission.test.teacherId !== locals.user!.id) {
+      return fail(403, { error: 'Not authorized' });
+    }
+
+    // Delete all answers first (foreign key constraint)
+    await prisma.answer.deleteMany({
+      where: { submissionId: submissionId }
+    });
+
+    // Delete the submission
+    await prisma.testSubmission.delete({
+      where: { id: submissionId }
+    });
+
+    return { deleteSuccess: true, message: 'Submission deleted successfully' };
+  },
+
+  deleteSelected: async ({ request, params, locals }) => {
+    const formData = await request.formData();
+    const submissionIds = formData.getAll('submissionIds').map(id => id.toString());
+
+    if (submissionIds.length === 0) {
+      return fail(400, { error: 'No submissions selected' });
+    }
+
+    const test = await prisma.test.findUnique({
+      where: { id: params.id }
+    });
+
+    if (!test || test.teacherId !== locals.user!.id) {
+      return fail(403, { error: 'Not authorized' });
+    }
+
+    // Verify all submissions belong to this test
+    const submissions = await prisma.testSubmission.findMany({
+      where: {
+        id: { in: submissionIds },
+        testId: params.id
+      }
+    });
+
+    if (submissions.length !== submissionIds.length) {
+      return fail(400, { error: 'Some submissions not found or unauthorized' });
+    }
+
+    // Delete all answers first
+    await prisma.answer.deleteMany({
+      where: { submissionId: { in: submissionIds } }
+    });
+
+    // Delete all selected submissions
+    await prisma.testSubmission.deleteMany({
+      where: { id: { in: submissionIds } }
+    });
+
+    return { deleteSuccess: true, message: `Deleted ${submissionIds.length} submission(s)` };
   }
 };

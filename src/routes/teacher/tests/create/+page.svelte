@@ -36,18 +36,22 @@
   let testDescription = $state('');
   let autoGrade = $state(true);
   let selectedClassId = $state('');
+  let totalPoints = $state<number | null>(null);
 
   // Manual form values
   let manualTitle = $state('');
   let manualDescription = $state('');
   let manualAutoGrade = $state(true);
   let manualClassId = $state('');
+  let manualTotalPoints = $state<number | null>(null);
   let manualQuestions = $state<{ type: string; question: string; options: string[]; correctAnswer: string; points: number }[]>([
     { type: 'MULTIPLE_CHOICE', question: '', options: ['', '', '', ''], correctAnswer: '', points: 1 }
   ]);
 
+  // Calculate current total points for manual questions
+  let manualCurrentPoints = $derived(manualQuestions.reduce((sum, q) => sum + q.points, 0));
+
   const questionTypes = [
-    { value: 'MULTIPLE_CHOICE', label: 'Multiple Choice' },
     { value: 'TRUE_FALSE', label: 'True/False' },
     { value: 'SHORT_ANSWER', label: 'Short Answer' },
     { value: 'LONG_ANSWER', label: 'Long Answer' },
@@ -199,22 +203,36 @@
           </div>
 
           <div class="card p-6">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Difficulty</label>
-            <div class="flex gap-2">
-              {#each ['easy', 'medium', 'hard'] as level}
-                <button
-                  type="button"
-                  onclick={() => difficulty = level as 'easy' | 'medium' | 'hard'}
-                  class="flex-1 py-2 rounded-lg border-2 font-medium {difficulty === level
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : 'border-gray-200 text-gray-600'}"
-                >
-                  {level.charAt(0).toUpperCase() + level.slice(1)}
-                </button>
-              {/each}
-            </div>
-            <input type="hidden" name="difficulty" value={difficulty} />
+            <label class="block text-sm font-medium text-gray-700 mb-2">Total Points (Optional)</label>
+            <input
+              name="totalPoints"
+              type="number"
+              min="1"
+              max="1000"
+              bind:value={totalPoints}
+              class="input"
+              placeholder="e.g., 100"
+            />
+            <p class="text-xs text-gray-500 mt-1">AI will distribute points per question. Leave blank for default (1 pt each).</p>
           </div>
+        </div>
+
+        <div class="card p-6">
+          <label class="block text-sm font-medium text-gray-700 mb-2">Difficulty</label>
+          <div class="flex gap-2">
+            {#each ['easy', 'medium', 'hard'] as level}
+              <button
+                type="button"
+                onclick={() => difficulty = level as 'easy' | 'medium' | 'hard'}
+                class="flex-1 py-2 rounded-lg border-2 font-medium {difficulty === level
+                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                  : 'border-gray-200 text-gray-600'}"
+              >
+                {level.charAt(0).toUpperCase() + level.slice(1)}
+              </button>
+            {/each}
+          </div>
+          <input type="hidden" name="difficulty" value={difficulty} />
         </div>
 
         <div class="card p-6">
@@ -417,9 +435,16 @@
           <label for="manual-description" class="label">Description (Optional)</label>
           <textarea id="manual-description" name="description" rows="2" bind:value={manualDescription} class="input"></textarea>
         </div>
-        <div class="flex items-center gap-3">
-          <input type="checkbox" id="manualAutoGrade" bind:checked={manualAutoGrade} class="w-5 h-5 rounded" />
-          <label for="manualAutoGrade" class="font-medium text-gray-700">Enable AI Auto-Grading</label>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div class="form-group">
+            <label for="manual-totalPoints" class="label">Total Points (Optional)</label>
+            <input id="manual-totalPoints" name="totalPoints" type="number" min="1" max="1000" bind:value={manualTotalPoints} class="input" placeholder="e.g., 100" />
+            <p class="text-xs text-gray-500 mt-1">Current: {manualCurrentPoints} pts</p>
+          </div>
+          <div class="flex items-center gap-3 pt-6">
+            <input type="checkbox" id="manualAutoGrade" bind:checked={manualAutoGrade} class="w-5 h-5 rounded" />
+            <label for="manualAutoGrade" class="font-medium text-gray-700">Enable AI Auto-Grading</label>
+          </div>
         </div>
         <input type="hidden" name="autoGrade" value={manualAutoGrade.toString()} />
       </div>

@@ -138,7 +138,7 @@ export const actions: Actions = {
     });
 
     try {
-      // Use AI to grade the entire test
+      // Use AI to grade the entire test with test-specific settings
       const result = await shuttleAI.gradeTestComprehensive({
         testTitle: submission.test.title,
         answers: submission.answers.map(a => ({
@@ -148,7 +148,9 @@ export const actions: Actions = {
           studentAnswer: a.answer || '',
           questionType: a.question.type,
           points: a.question.points
-        }))
+        })),
+        allowPartialCredit: (submission.test as any).aiPartialCredit ?? true,
+        gradingHarshness: (submission.test as any).aiGradingHarshness ?? 50
       }, { userId: locals.user!.id, orgId: membership?.organizationId });
 
       // Update each answer with AI grading

@@ -465,8 +465,13 @@ model Test {
   scrambleQuestions      Boolean    @default(true)
   scrambleOptions        Boolean    @default(true) // Scramble multiple choice options
   studyGuide             String?    @db.Text
+  totalPoints            Int?       // Total points for the test (optional, used for point distribution)
   createdAt              DateTime   @default(now())
   updatedAt              DateTime   @updatedAt
+
+  // AI Grading Settings
+  aiPartialCredit        Boolean    @default(true) // Allow AI to give partial credit
+  aiGradingHarshness     Int        @default(50) // 0 = lenient, 50 = balanced, 100 = strict
 
   // Retake Settings
   maxAttempts            Int        @default(1) // 1 = no retakes, 0 = unlimited

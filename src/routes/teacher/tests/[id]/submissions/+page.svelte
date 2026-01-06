@@ -17,7 +17,8 @@
     BarChart3,
     TrendingUp,
     TrendingDown,
-    MessageSquare
+    MessageSquare,
+    Trash2
   } from 'lucide-svelte';
   import type { PageData, ActionData } from './$types';
 
@@ -26,7 +27,10 @@
   let aiGrading = $state(false);
   let aiGradingAll = $state(false);
   let generatingFeedback = $state(false);
+  let deleting = $state(false);
   let showGradeModal = $state<any>(null);
+  let showDeleteConfirm = $state<any>(null);
+  let showBulkDeleteConfirm = $state(false);
   let showClassFeedback = $state(false);
   let statusFilter = $state(data.filters.status);
   let searchQuery = $state(data.filters.search);
@@ -199,10 +203,41 @@
     </div>
   {/if}
 
+  {#if form?.deleteSuccess}
+    <div class="alert alert-success mb-6">
+      <CheckCircle class="w-5 h-5" />
+      {form.message || 'Submission deleted successfully!'}
+    </div>
+  {/if}
+
   {#if form?.error}
     <div class="alert alert-error mb-6">
       <AlertCircle class="w-5 h-5" />
       {form.error}
+    </div>
+  {/if}
+
+  <!-- Bulk Actions (when submissions selected) -->
+  {#if selectedSubmissions.size > 0}
+    <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6 flex items-center justify-between">
+      <span class="text-indigo-700 font-medium">
+        {selectedSubmissions.size} submission{selectedSubmissions.size !== 1 ? 's' : ''} selected
+      </span>
+      <div class="flex items-center gap-2">
+        <button
+          onclick={() => (selectedSubmissions = new Set())}
+          class="btn btn-sm btn-secondary"
+        >
+          Clear Selection
+        </button>
+        <button
+          onclick={() => (showBulkDeleteConfirm = true)}
+          class="btn btn-sm bg-red-600 hover:bg-red-700 text-white"
+        >
+          <Trash2 class="w-4 h-4" />
+          Delete Selected
+        </button>
+      </div>
     </div>
   {/if}
 
@@ -272,6 +307,7 @@
             />
           </th>
           <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Student</th>
+          <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase hidden sm:table-cell">Attempt</th>
           <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase hidden md:table-cell">Submitted</th>
           <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Score</th>
           <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Status</th>
@@ -294,10 +330,26 @@
               <div class="flex items-center gap-3">
                 <div class="avatar avatar-sm">{submission.student.name?.charAt(0) || '?'}</div>
                 <div>
-                  <div class="font-medium text-gray-900">{submission.student.name}</div>
+                  <div class="font-medium text-gray-900">
+                    {submission.student.name}
+                    {#if submission.attemptNumber > 1}
+                      <span class="ml-1 text-xs text-gray-400 sm:hidden">(#{submission.attemptNumber})</span>
+                    {/if}
+                  </div>
                   <div class="text-sm text-gray-500">{submission.student.email}</div>
                 </div>
               </div>
+            </td>
+            <td class="px-4 py-4 text-center hidden sm:table-cell">
+              {#if submission.attemptNumber === 1}
+                <span class="badge badge-blue">1st</span>
+              {:else if submission.attemptNumber === 2}
+                <span class="badge badge-purple">2nd</span>
+              {:else if submission.attemptNumber === 3}
+                <span class="badge badge-orange">3rd</span>
+              {:else}
+                <span class="badge badge-gray">{submission.attemptNumber}th</span>
+              {/if}
             </td>
             <td class="px-4 py-4 text-sm text-gray-500 hidden md:table-cell">
               {formatDate(submission.submittedAt)}
@@ -344,12 +396,19 @@
                 {:else}
                   <span class="text-sm text-gray-400">In progress</span>
                 {/if}
+                <button
+                  onclick={() => (showDeleteConfirm = submission)}
+                  class="btn btn-sm btn-ghost text-red-600 hover:bg-red-50"
+                  title="Delete submission"
+                >
+                  <Trash2 class="w-4 h-4" />
+                </button>
               </div>
             </td>
           </tr>
         {:else}
           <tr>
-            <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+            <td colspan="7" class="px-4 py-8 text-center text-gray-500">
               No submissions found
             </td>
           </tr>
@@ -445,14 +504,24 @@
                 </div>
               {/if}
 
+              {#if answer.feedback}
+                <div class="bg-indigo-50 rounded-lg p-3 mb-3 border border-indigo-100">
+                  <div class="flex items-center gap-2 text-sm text-indigo-600 mb-1">
+                    <Sparkles class="w-4 h-4" />
+                    <span class="font-medium">AI Feedback:</span>
+                  </div>
+                  <div class="text-indigo-900">{answer.feedback}</div>
+                </div>
+              {/if}
+
               <div>
-                <label class="text-sm text-gray-500">Feedback (optional)</label>
+                <label class="text-sm text-gray-500">{answer.feedback ? 'Edit Feedback' : 'Add Feedback (optional)'}</label>
                 <input
                   type="text"
                   name="feedback_{answer.id}"
                   value={answer.feedback || ''}
                   class="input mt-1"
-                  placeholder="Add feedback for this answer..."
+                  placeholder="Add or edit feedback for this answer..."
                 />
               </div>
             </div>
@@ -564,6 +633,91 @@
         <button onclick={() => (showClassFeedback = false)} class="btn btn-primary">
           Close
         </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Delete Single Confirmation Modal -->
+{#if showDeleteConfirm}
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-md w-full">
+      <div class="p-6">
+        <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Trash2 class="w-6 h-6 text-red-600" />
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 text-center mb-2">Delete Submission?</h3>
+        <p class="text-gray-500 text-center mb-6">
+          Are you sure you want to delete the submission from <strong>{showDeleteConfirm.student.name}</strong>? 
+          This action cannot be undone and all answers will be permanently removed.
+        </p>
+        <div class="flex gap-3">
+          <button onclick={() => (showDeleteConfirm = null)} class="btn btn-secondary flex-1">
+            Cancel
+          </button>
+          <form method="POST" action="?/deleteSubmission" class="flex-1" use:enhance={() => {
+            deleting = true;
+            return async ({ update }) => {
+              deleting = false;
+              showDeleteConfirm = null;
+              await update();
+              await invalidateAll();
+            };
+          }}>
+            <input type="hidden" name="submissionId" value={showDeleteConfirm.id} />
+            <button type="submit" class="btn bg-red-600 hover:bg-red-700 text-white w-full" disabled={deleting}>
+              {#if deleting}
+                <Loader2 class="w-4 h-4 animate-spin" />
+              {:else}
+                Delete
+              {/if}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Bulk Delete Confirmation Modal -->
+{#if showBulkDeleteConfirm}
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-md w-full">
+      <div class="p-6">
+        <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Trash2 class="w-6 h-6 text-red-600" />
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 text-center mb-2">Delete {selectedSubmissions.size} Submission{selectedSubmissions.size !== 1 ? 's' : ''}?</h3>
+        <p class="text-gray-500 text-center mb-6">
+          Are you sure you want to delete the selected submissions? 
+          This action cannot be undone and all answers will be permanently removed.
+        </p>
+        <div class="flex gap-3">
+          <button onclick={() => (showBulkDeleteConfirm = false)} class="btn btn-secondary flex-1">
+            Cancel
+          </button>
+          <form method="POST" action="?/deleteSelected" class="flex-1" use:enhance={() => {
+            deleting = true;
+            return async ({ update }) => {
+              deleting = false;
+              showBulkDeleteConfirm = false;
+              selectedSubmissions = new Set();
+              await update();
+              await invalidateAll();
+            };
+          }}>
+            {#each [...selectedSubmissions] as id}
+              <input type="hidden" name="submissionIds" value={id} />
+            {/each}
+            <button type="submit" class="btn bg-red-600 hover:bg-red-700 text-white w-full" disabled={deleting}>
+              {#if deleting}
+                <Loader2 class="w-4 h-4 animate-spin" />
+              {:else}
+                Delete All
+              {/if}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   </div>

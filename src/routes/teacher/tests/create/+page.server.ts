@@ -39,6 +39,8 @@ export const actions: Actions = {
     const difficulty = formData.get('difficulty')?.toString() as 'easy' | 'medium' | 'hard';
     const questionTypes = formData.getAll('questionTypes').map((t) => t.toString());
     const additionalInstructions = formData.get('additionalInstructions')?.toString();
+    const totalPointsStr = formData.get('totalPoints')?.toString();
+    const totalPoints = totalPointsStr ? parseInt(totalPointsStr) : null;
 
     if (!topic) {
       return fail(400, { error: 'Topic is required' });
@@ -58,7 +60,7 @@ export const actions: Actions = {
       data: {
         type: 'TEST_GENERATION',
         status: 'RUNNING',
-        input: { topic, numberOfQuestions, difficulty, questionTypes, additionalInstructions },
+        input: { topic, numberOfQuestions, difficulty, questionTypes, additionalInstructions, totalPoints },
         userId: locals.user!.id,
         orgId: membership?.organizationId,
         startedAt: new Date()
@@ -72,7 +74,8 @@ export const actions: Actions = {
           numberOfQuestions,
           questionTypes,
           difficulty: difficulty || 'medium',
-          additionalInstructions
+          additionalInstructions,
+          totalPoints
         },
         { userId: locals.user!.id, orgId: membership?.organizationId }
       );

@@ -276,6 +276,7 @@ export class ShuttleAIService {
       questionTypes: string[];
       difficulty: 'easy' | 'medium' | 'hard';
       additionalInstructions?: string;
+      totalPoints?: number | null;
     },
     context?: AIContext
   ): Promise<
@@ -295,19 +296,28 @@ CRITICAL FORMATTING RULES:
 3. Start your response directly with [ and end with ]
 4. No explanatory text before or after the JSON`;
 
-    const userPrompt = `Create ${params.numberOfQuestions} ${params.difficulty} difficulty test questions about: ${params.topic}
+    // Calculate point distribution if totalPoints is provided
+    let pointsInstruction = '- points: Point value 1-10 (number)';
+    if (params.totalPoints && params.totalPoints > 0) {
+      const avgPoints = Math.round(params.totalPoints / params.numberOfQuestions);
+      pointsInstruction = `- points: Distribute the total ${params.totalPoints} points across all questions. Harder questions (essay, long answer) should get more points. Total must equal ${params.totalPoints}. Average around ${avgPoints} points per question.`;
+    }
+
+    const userPrompt = `Create EXACTLY ${params.numberOfQuestions} ${params.difficulty} difficulty test questions about: ${params.topic}
+
+IMPORTANT: You MUST generate exactly ${params.numberOfQuestions} questions. Not more, not less.
 
 Question types to include: ${params.questionTypes.join(', ')}
 ${params.additionalInstructions ? `Additional instructions: ${params.additionalInstructions}` : ''}
 
-Return a JSON array where each question object has:
+Return a JSON array with exactly ${params.numberOfQuestions} question objects. Each object has:
 - type: One of "MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "LONG_ANSWER", "ESSAY", "FILL_IN_BLANK"
 - question: The question text (string)
 - options: Array of 4 strings (for MULTIPLE_CHOICE) or ["True", "False"] (for TRUE_FALSE) or null for other types
 - correctAnswer: The correct answer (string)
-- points: Point value 1-10 (number)
+${pointsInstruction}
 
-IMPORTANT: Return ONLY the JSON array. No markdown formatting. No code blocks. Just pure JSON starting with [ and ending with ].`;
+CRITICAL: Return ONLY the JSON array with exactly ${params.numberOfQuestions} questions. No markdown formatting. No code blocks. Just pure JSON starting with [ and ending with ].`;
 
     const messages: Message[] = [
       { role: 'system', content: systemPrompt },
@@ -324,13 +334,38 @@ IMPORTANT: Return ONLY the JSON array. No markdown formatting. No code blocks. J
       context,
       metadata: { topic: params.topic, numberOfQuestions: params.numberOfQuestions }
     });
-    const questions = this.extractAndRepairJSON(response, true) as Array<{
+    let questions = this.extractAndRepairJSON(response, true) as Array<{
       type: QuestionType;
       question: string;
       options: string[] | null;
       correctAnswer: string;
       points: number;
     }>;
+
+    // Ensure we return exactly the requested number of questions
+    if (questions.length > params.numberOfQuestions) {
+      // Trim excess questions
+      questions = questions.slice(0, params.numberOfQuestions);
+    }
+
+    // Recalculate points if totalPoints was specified to ensure correct distribution
+    if (params.totalPoints && params.totalPoints > 0 && questions.length > 0) {
+      const currentTotal = questions.reduce((sum, q) => sum + (q.points || 0), 0);
+      if (currentTotal !== params.totalPoints) {
+        // Redistribute points proportionally
+        const scaleFactor = params.totalPoints / currentTotal;
+        let distributed = 0;
+        questions.forEach((q, i) => {
+          if (i === questions.length - 1) {
+            // Last question gets remainder to ensure exact total
+            q.points = params.totalPoints! - distributed;
+          } else {
+            q.points = Math.round((q.points || 1) * scaleFactor);
+            distributed += q.points;
+          }
+        });
+      }
+    }
 
     return questions;
   }
@@ -405,6 +440,8 @@ Return ONLY the JSON object. No markdown. No code blocks. Just pure JSON.`;
         questionType: string;
         points: number;
       }>;
+      allowPartialCredit?: boolean;
+      gradingHarshness?: number; // 0-100, where 0 is lenient and 100 is strict
     },
     context?: AIContext
   ): Promise<{
@@ -418,6 +455,9 @@ Return ONLY the JSON object. No markdown. No code blocks. Just pure JSON.`;
     totalScore: number;
     totalPoints: number;
   }> {
+    const allowPartialCredit = params.allowPartialCredit !== false; // Default to true
+    const harshness = params.gradingHarshness ?? 50; // Default to balanced
+
     const answersList = params.answers
       .map(
         (a, idx) => `QUESTION ${idx + 1}:
@@ -431,7 +471,32 @@ Student Answer: ${a.studentAnswer}`
 
     const totalPoints = params.answers.reduce((sum, a) => sum + a.points, 0);
 
-    const systemPrompt = `You are an expert teacher grading a test.
+    // Determine grading style based on harshness
+    let gradingStyle = '';
+    if (harshness <= 20) {
+      gradingStyle = 'Be very lenient. Give generous partial credit for answers that show any understanding. Accept synonyms, minor spelling errors, and answers that are in the right direction.';
+    } else if (harshness <= 40) {
+      gradingStyle = 'Be lenient. Give partial credit for answers that demonstrate understanding even if not perfectly worded. Accept minor errors and reasonable interpretations.';
+    } else if (harshness <= 60) {
+      gradingStyle = 'Use balanced grading. Give partial credit when appropriate, but expect reasonably accurate and complete answers. Minor errors may result in small point deductions.';
+    } else if (harshness <= 80) {
+      gradingStyle = 'Be strict. Expect accurate and well-explained answers. Only give partial credit for answers that are substantially correct. Penalize vague or incomplete responses.';
+    } else {
+      gradingStyle = 'Be very strict. Require precise, complete, and accurate answers. Only award full points for exemplary responses. Be critical of any errors, omissions, or lack of clarity.';
+    }
+
+    const partialCreditInstruction = allowPartialCredit
+      ? 'Award partial credit when appropriate based on how much of the answer is correct.'
+      : 'Do NOT give partial credit. Award either full points (if completely correct) or zero points (if incorrect or incomplete).';
+
+    const systemPrompt = `You are an expert teacher grading a test. ${gradingStyle}
+
+${partialCreditInstruction}
+
+For EACH question, provide specific, constructive feedback explaining:
+- What the student got right
+- What they got wrong (if anything)
+- How they could improve their answer
 
 CRITICAL FORMATTING RULES:
 1. Return ONLY raw JSON - DO NOT wrap in markdown code blocks
@@ -448,10 +513,15 @@ ${answersList}
 Return a JSON object with exactly this structure:
 {
   "gradedAnswers": [
-    { "id": 1, "isCorrect": boolean, "pointsAwarded": number, "feedback": "string" }
+    { "id": 1, "isCorrect": boolean, "pointsAwarded": number, "feedback": "specific feedback for this question" }
   ],
-  "overallFeedback": "detailed feedback string"
+  "overallFeedback": "overall performance summary and suggestions for improvement"
 }
+
+IMPORTANT:
+- Each gradedAnswer must have specific, helpful feedback for that question
+- Feedback should explain why points were awarded or deducted
+- Overall feedback should summarize the student's performance and areas for improvement
 
 Return ONLY the JSON object. No markdown. No code blocks. Just pure JSON.`;
 
@@ -464,7 +534,7 @@ Return ONLY the JSON object. No markdown. No code blocks. Just pure JSON.`;
     const response = await this.makeRequest(messages, maxTokens, {
       type: 'TEST_GRADING',
       context,
-      metadata: { testTitle: params.testTitle, questionCount: params.answers.length }
+      metadata: { testTitle: params.testTitle, questionCount: params.answers.length, harshness, allowPartialCredit }
     });
 
     const parsed = this.extractAndRepairJSON(response, false) as {

@@ -31,6 +31,8 @@
 
     // AI Grading
     aiOpenEndedGrading: boolean;
+    aiPartialCredit: boolean;
+    aiGradingHarshness: number;
 
     // Retakes
     maxAttempts: number;
@@ -70,6 +72,22 @@
 
   function toggleSection(section: keyof typeof expandedSections) {
     expandedSections[section] = !expandedSections[section];
+  }
+
+  function getHarshnessLabel(value: number): string {
+    if (value <= 20) return 'Very Lenient';
+    if (value <= 40) return 'Lenient';
+    if (value <= 60) return 'Balanced';
+    if (value <= 80) return 'Strict';
+    return 'Very Strict';
+  }
+
+  function getHarshnessColor(value: number): string {
+    if (value <= 20) return 'text-green-600';
+    if (value <= 40) return 'text-lime-600';
+    if (value <= 60) return 'text-amber-600';
+    if (value <= 80) return 'text-orange-600';
+    return 'text-red-600';
   }
 
   function enableLockdown() {
@@ -277,6 +295,52 @@
         </label>
 
         {#if settings.aiOpenEndedGrading}
+          <!-- Partial Credit Toggle -->
+          <label class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer border border-gray-200">
+            <input type="checkbox" bind:checked={settings.aiPartialCredit} class="w-4 h-4 rounded" />
+            <div class="flex-1">
+              <span class="font-medium text-gray-900">Allow Partial Credit</span>
+              <p class="text-sm text-gray-500">AI can award partial points for partially correct answers</p>
+            </div>
+            {#if settings.aiPartialCredit}
+              <span class="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded-full">ON</span>
+            {:else}
+              <span class="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">OFF</span>
+            {/if}
+          </label>
+
+          <!-- Grading Harshness Slider -->
+          <div class="p-4 rounded-lg border border-gray-200">
+            <div class="flex items-center justify-between mb-3">
+              <span class="font-medium text-gray-900">Grading Strictness</span>
+              <span class="px-3 py-1 text-sm font-medium rounded-full {getHarshnessColor(settings.aiGradingHarshness)} bg-gray-100">
+                {getHarshnessLabel(settings.aiGradingHarshness)}
+              </span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="10"
+              bind:value={settings.aiGradingHarshness}
+              class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+            />
+            <div class="flex justify-between mt-2 text-xs text-gray-500">
+              <span>Lenient</span>
+              <span>Balanced</span>
+              <span>Strict</span>
+            </div>
+            <p class="text-xs text-gray-500 mt-3">
+              {#if settings.aiGradingHarshness <= 30}
+                AI will be generous with partial credit and accept answers that demonstrate understanding.
+              {:else if settings.aiGradingHarshness <= 70}
+                AI will give fair partial credit and expect reasonably accurate answers.
+              {:else}
+                AI will require precise answers and be strict with partial credit.
+              {/if}
+            </p>
+          </div>
+
           <div class="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
             <div class="flex items-start gap-3">
               <svg class="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -287,7 +351,7 @@
                 <ul class="space-y-1 text-indigo-700">
                   <li>• Multiple choice and true/false questions are graded instantly</li>
                   <li>• Short answer, long answer, and essay questions are graded by AI</li>
-                  <li>• AI provides feedback and partial credit based on answer quality</li>
+                  <li>• AI provides detailed feedback for each question</li>
                   <li>• You can review and adjust AI grades at any time</li>
                 </ul>
               </div>

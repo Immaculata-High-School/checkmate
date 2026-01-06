@@ -80,6 +80,8 @@ export const actions: Actions = {
 
       // AI Grading
       aiOpenEndedGrading: formData.get('aiOpenEndedGrading') === 'true',
+      aiPartialCredit: formData.get('aiPartialCredit') === 'true',
+      aiGradingHarshness: parseInt(formData.get('aiGradingHarshness') as string) || 50,
 
       // Retakes
       maxAttempts: parseInt(formData.get('maxAttempts') as string) || 1,

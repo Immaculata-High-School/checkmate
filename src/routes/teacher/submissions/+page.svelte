@@ -273,14 +273,24 @@
                 </div>
               {/if}
 
+              {#if answer.feedback}
+                <div class="bg-indigo-50 rounded-lg p-3 mb-3 border border-indigo-100">
+                  <div class="flex items-center gap-2 text-sm text-indigo-600 mb-1">
+                    <Sparkles class="w-4 h-4" />
+                    <span class="font-medium">AI Feedback:</span>
+                  </div>
+                  <div class="text-indigo-900">{answer.feedback}</div>
+                </div>
+              {/if}
+
               <div>
-                <label class="text-sm text-gray-500">Feedback (optional)</label>
+                <label class="text-sm text-gray-500">{answer.feedback ? 'Edit Feedback' : 'Add Feedback (optional)'}</label>
                 <input
                   type="text"
                   name="feedback_{answer.id}"
                   value={answer.feedback || ''}
                   class="input mt-1"
-                  placeholder="Add feedback for this answer..."
+                  placeholder="Add or edit feedback for this answer..."
                 />
               </div>
             </div>
