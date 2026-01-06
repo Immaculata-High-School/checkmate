@@ -1,7 +1,9 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   // Ensure Node.js runtime for production deployment
-  engineType = "library"
+  engineType    = "library"
+  // Binary targets for both development (native) and production (Alpine Linux)
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
