@@ -52,7 +52,16 @@ export interface OrgMembership {
 export async function getUserOrgMemberships(userId: string): Promise<OrgMembership[]> {
   const memberships = await prisma.organizationMember.findMany({
     where: { userId, isActive: true },
-    include: { organization: true }
+    select: {
+      role: true,
+      organization: {
+        select: {
+          id: true,
+          slug: true,
+          name: true
+        }
+      }
+    }
   });
 
   return memberships.map((m) => ({

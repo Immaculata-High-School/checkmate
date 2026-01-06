@@ -52,6 +52,7 @@
   let manualCurrentPoints = $derived(manualQuestions.reduce((sum, q) => sum + q.points, 0));
 
   const questionTypes = [
+    { value: 'MULTIPLE_CHOICE', label: 'Multiple Choice' },
     { value: 'TRUE_FALSE', label: 'True/False' },
     { value: 'SHORT_ANSWER', label: 'Short Answer' },
     { value: 'LONG_ANSWER', label: 'Long Answer' },

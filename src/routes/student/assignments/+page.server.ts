@@ -2,82 +2,101 @@ import { prisma } from '$lib/server/db';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  // Get classes the student is enrolled in
+  // Get active classes the student is enrolled in (single optimized query)
   const memberships = await prisma.classMember.findMany({
-    where: { userId: locals.user!.id },
+    where: {
+      userId: locals.user!.id,
+      class: { archived: false }
+    },
     select: { classId: true }
   });
 
-  const classIds = memberships.map(m => m.classId);
+  const activeClassIds = memberships.map(m => m.classId);
 
-  // Get only active (non-archived) classes
-  const activeClasses = await prisma.class.findMany({
-    where: {
-      id: { in: classIds },
-      archived: false
-    },
-    select: { id: true }
-  });
-  const activeClassIds = activeClasses.map(c => c.id);
+  if (activeClassIds.length === 0) {
+    return {
+      available: [],
+      inProgress: [],
+      completed: [],
+      studyGuides: [],
+      worksheets: [],
+      studySets: [],
+      totalTests: 0
+    };
+  }
 
-  // Get all tests assigned to those active classes
-  const classTests = await prisma.classTest.findMany({
-    where: {
-      classId: { in: activeClassIds },
-      test: { status: 'PUBLISHED' }
-    },
-    include: {
-      test: {
-        include: {
-          questions: { select: { id: true } },
-          teacher: { select: { id: true, name: true } }
+  // Run all independent queries in parallel
+  const [classTests, allAssignments, submissions] = await Promise.all([
+    // Get all tests assigned to active classes
+    prisma.classTest.findMany({
+      where: {
+        classId: { in: activeClassIds },
+        test: { status: 'PUBLISHED' }
+      },
+      select: {
+        test: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            timeLimit: true,
+            maxAttempts: true,
+            questions: { select: { id: true } },
+            teacher: { select: { id: true, name: true } }
+          }
+        },
+        class: { select: { id: true, name: true, emoji: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    }),
+    // Get ALL assignments in a single query (study guides, worksheets, study sets)
+    prisma.classAssignment.findMany({
+      where: {
+        classId: { in: activeClassIds },
+        type: { in: ['STUDY_GUIDE', 'WORKSHEET', 'STUDY_SET'] }
+      },
+      select: {
+        type: true,
+        dueDate: true,
+        studyGuide: { select: { id: true, title: true, description: true } },
+        worksheet: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            _count: { select: { items: true } }
+          }
+        },
+        studySet: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            _count: { select: { cards: true } }
+          }
+        },
+        class: { select: { id: true, name: true, emoji: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    }),
+    // Get student's submissions for all tests they're enrolled in
+    prisma.testSubmission.findMany({
+      where: {
+        studentId: locals.user!.id,
+        test: {
+          classes: { some: { classId: { in: activeClassIds } } }
         }
       },
-      class: {
-        select: { id: true, name: true, emoji: true }
+      select: {
+        testId: true,
+        status: true,
+        score: true,
+        totalPoints: true,
+        startedAt: true,
+        submittedAt: true
       }
-    },
-    orderBy: { createdAt: 'desc' }
-  });
-
-  // Get study guides assigned to student's active classes (new model)
-  const studyGuideAssignments = await prisma.classAssignment.findMany({
-    where: {
-      classId: { in: activeClassIds },
-      type: 'STUDY_GUIDE',
-      studyGuideId: { not: null }
-    },
-    include: {
-      studyGuide: {
-        select: {
-          id: true,
-          title: true,
-          description: true
-        }
-      },
-      class: {
-        select: { id: true, name: true, emoji: true }
-      }
-    },
-    orderBy: { createdAt: 'desc' }
-  });
-
-  // Get student's submissions
-  const testIds = classTests.map(ct => ct.test.id);
-  const submissions = await prisma.testSubmission.findMany({
-    where: {
-      studentId: locals.user!.id,
-      testId: { in: testIds }
-    },
-    select: {
-      testId: true,
-      status: true,
-      score: true,
-      totalPoints: true,
-      startedAt: true,
-      submittedAt: true
-    }
-  });
+    })
+  ]);
 
   const submissionMap = new Map(submissions.map(s => [s.testId, s]));
 
@@ -94,83 +113,41 @@ export const load: PageServerLoad = async ({ locals }) => {
     submission: submissionMap.get(ct.test.id) || null
   }));
 
-  // Deduplicate study guides (same guide might be assigned to multiple classes)
-  const studyGuideMap = new Map<string, typeof studyGuideAssignments[0]>();
-  for (const sg of studyGuideAssignments) {
-    if (sg.studyGuide && !studyGuideMap.has(sg.studyGuide.id)) {
-      studyGuideMap.set(sg.studyGuide.id, sg);
+  // Process assignments by type (filter in memory - faster than 3 queries)
+  const studyGuideMap = new Map<string, { id: string; title: string; description: string | null; class: { id: string; name: string; emoji: string | null } }>();
+  const worksheets: { id: string; title: string; description: string | null; itemCount: number; class: { id: string; name: string; emoji: string | null }; dueDate: Date | null }[] = [];
+  const studySets: { id: string; title: string; description: string | null; cardCount: number; class: { id: string; name: string; emoji: string | null }; dueDate: Date | null }[] = [];
+
+  for (const a of allAssignments) {
+    if (a.type === 'STUDY_GUIDE' && a.studyGuide && !studyGuideMap.has(a.studyGuide.id)) {
+      studyGuideMap.set(a.studyGuide.id, {
+        id: a.studyGuide.id,
+        title: a.studyGuide.title,
+        description: a.studyGuide.description,
+        class: a.class
+      });
+    } else if (a.type === 'WORKSHEET' && a.worksheet) {
+      worksheets.push({
+        id: a.worksheet.id,
+        title: a.worksheet.title,
+        description: a.worksheet.description,
+        itemCount: a.worksheet._count.items,
+        class: a.class,
+        dueDate: a.dueDate
+      });
+    } else if (a.type === 'STUDY_SET' && a.studySet) {
+      studySets.push({
+        id: a.studySet.id,
+        title: a.studySet.title,
+        description: a.studySet.description,
+        cardCount: a.studySet._count.cards,
+        class: a.class,
+        dueDate: a.dueDate
+      });
     }
   }
-  const studyGuides = Array.from(studyGuideMap.values())
-    .filter(sg => sg.studyGuide)
-    .map(sg => ({
-      id: sg.studyGuide!.id,
-      title: sg.studyGuide!.title,
-      description: sg.studyGuide!.description,
-      class: sg.class
-    }));
 
-  // Get worksheets assigned to student's active classes
-  const worksheetAssignments = await prisma.classAssignment.findMany({
-    where: {
-      classId: { in: activeClassIds },
-      type: 'WORKSHEET',
-      worksheetId: { not: null }
-    },
-    include: {
-      worksheet: {
-        include: {
-          _count: { select: { items: true } }
-        }
-      },
-      class: {
-        select: { id: true, name: true, emoji: true }
-      }
-    },
-    orderBy: { createdAt: 'desc' }
-  });
-
-  const worksheets = worksheetAssignments
-    .filter(a => a.worksheet)
-    .map(a => ({
-      id: a.worksheet!.id,
-      title: a.worksheet!.title,
-      description: a.worksheet!.description,
-      itemCount: a.worksheet!._count.items,
-      class: a.class,
-      dueDate: a.dueDate
-    }));
-
-  // Get study sets assigned to student's active classes
-  const studySetAssignments = await prisma.classAssignment.findMany({
-    where: {
-      classId: { in: activeClassIds },
-      type: 'STUDY_SET',
-      studySetId: { not: null }
-    },
-    include: {
-      studySet: {
-        include: {
-          _count: { select: { cards: true } }
-        }
-      },
-      class: {
-        select: { id: true, name: true, emoji: true }
-      }
-    },
-    orderBy: { createdAt: 'desc' }
-  });
-
-  const studySets = studySetAssignments
-    .filter(a => a.studySet)
-    .map(a => ({
-      id: a.studySet!.id,
-      title: a.studySet!.title,
-      description: a.studySet!.description,
-      cardCount: a.studySet!._count.cards,
-      class: a.class,
-      dueDate: a.dueDate
-    }));
+  const studyGuides = Array.from(studyGuideMap.values());
 
   const available = tests.filter(t => !t.submission || (t.submission.status === 'IN_PROGRESS'));
   const inProgress = tests.filter(t => t.submission?.status === 'IN_PROGRESS');

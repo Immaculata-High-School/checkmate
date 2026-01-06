@@ -265,6 +265,7 @@ model OrganizationMember {
   @@index([organizationId])
   @@index([userId])
   @@index([role])
+  @@index([userId, isActive])
 }
 
 model OrganizationInvite {
@@ -445,6 +446,8 @@ model ClassAssignment {
   @@index([testId])
   @@index([studyGuideId])
   @@index([dueDate])
+  @@index([type])
+  @@index([classId, type])
 }
 
 // ============================================================================
@@ -584,6 +587,7 @@ model TestSubmission {
   @@index([testId])
   @@index([studentId])
   @@index([status])
+  @@index([studentId, testId])
 }
 
 model Answer {
