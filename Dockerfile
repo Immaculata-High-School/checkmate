@@ -36,6 +36,9 @@ COPY --from=deps /app/node_modules ./node_modules
 # Copy source code
 COPY . .
 
+# Regenerate Prisma client to ensure correct binary targets
+RUN npx prisma generate
+
 # Build the SvelteKit application
 RUN npm run build
 
@@ -46,8 +49,8 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# Install openssl for Prisma runtime
-RUN apk add --no-cache openssl
+# Install openssl and required libraries for Prisma runtime
+RUN apk add --no-cache openssl libssl3 libcrypto3
 
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs
