@@ -1,5 +1,7 @@
 generator client {
   provider = "prisma-client-js"
+  // Ensure Node.js runtime for production deployment
+  engineType = "library"
 }
 
 datasource db {
