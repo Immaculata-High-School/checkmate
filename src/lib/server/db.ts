@@ -1,11 +1,7 @@
-// Use default import for CommonJS compatibility in ESM environments
-import pkg from '@prisma/client';
-const { PrismaClient } = pkg;
-
-type PrismaClientType = InstanceType<typeof PrismaClient>;
+import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClientType | undefined;
+  prisma: PrismaClient | undefined;
 };
 
 export const prisma =
