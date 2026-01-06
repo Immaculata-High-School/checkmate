@@ -1,0 +1,56 @@
+{
+	"name": "checkmate",
+	"private": true,
+	"version": "1.0.0",
+	"type": "module",
+	"prisma": {
+		"seed": "npx tsx prisma/seed.ts"
+	},
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"db:generate": "prisma generate",
+		"db:push": "prisma db push",
+		"db:migrate": "prisma migrate dev",
+		"db:studio": "prisma studio",
+		"db:reset": "prisma db push --force-reset"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-auto": "^7.0.0",
+		"@sveltejs/kit": "^2.49.1",
+		"@sveltejs/vite-plugin-svelte": "^6.2.1",
+		"@tailwindcss/forms": "^0.5.11",
+		"@tailwindcss/typography": "^0.5.19",
+		"@types/bcryptjs": "^2.4.6",
+		"@types/nodemailer": "^7.0.4",
+		"autoprefixer": "^10.4.23",
+		"postcss": "^8.5.6",
+		"svelte": "^5.45.6",
+		"svelte-check": "^4.3.4",
+		"tailwindcss": "^4.1.18",
+		"tsx": "^4.21.0",
+		"typescript": "^5.9.3",
+		"vite": "^7.2.6"
+	},
+	"dependencies": {
+		"@lucia-auth/adapter-prisma": "^4.0.1",
+		"@prisma/client": "^5.22.0",
+		"@sveltejs/adapter-node": "^5.4.0",
+		"@tailwindcss/postcss": "^4.1.18",
+		"arctic": "^3.7.0",
+		"bcryptjs": "^3.0.3",
+		"clsx": "^2.1.1",
+		"html2pdf.js": "^0.12.1",
+		"jspdf": "^3.0.4",
+		"lucia": "^3.2.2",
+		"lucide-svelte": "^0.562.0",
+		"nodemailer": "^7.0.11",
+		"prisma": "^5.22.0",
+		"sveltekit-superforms": "^2.29.1",
+		"zod": "^4.2.1"
+	}
+}

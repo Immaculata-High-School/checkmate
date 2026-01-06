@@ -1,0 +1,40 @@
+# Dependencies
+node_modules
+
+# Build outputs (will be rebuilt in container)
+build
+.svelte-kit
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment files (should be set via Coolify)
+.env
+.env.*
+!.env.example
+
+# Dev files
+*.md
+LICENSE
+.prettierrc
+.eslintrc*
+.editorconfig
+
+# Docker
+Dockerfile*
+docker-compose*
+.docker*
+
+# Misc
+*.log
+*.tmp
+.DS_Store
+coverage
+.nyc_output

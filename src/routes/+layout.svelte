@@ -1,0 +1,31 @@
+<script lang="ts">
+  import '../app.css';
+  import { Shield } from 'lucide-svelte';
+  import type { LayoutData } from './$types';
+
+  let { children, data }: { children: any; data: LayoutData } = $props();
+</script>
+
+<svelte:head>
+  <title>Checkmate - AI-Powered Learning Platform</title>
+  <meta name="description" content="Create tests, study materials, and track progress with AI-powered tools" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+</svelte:head>
+
+{#if data.isImpersonating}
+  <div class="bg-amber-500 text-amber-900 py-2 px-4 text-center text-sm font-medium flex items-center justify-center gap-2 sticky top-0 z-50">
+    <Shield class="w-4 h-4" />
+    <span>You are viewing as <strong>{data.user?.name || data.user?.email}</strong></span>
+    <a
+      href="/admin/return-to-admin"
+      class="ml-4 px-3 py-1 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors text-xs font-semibold"
+    >
+      Return to Admin
+    </a>
+  </div>
+{/if}
+
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/50">
+  {@render children()}
+</div>

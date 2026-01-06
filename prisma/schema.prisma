@@ -1,0 +1,947 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum PlatformRole {
+  PLATFORM_ADMIN
+  SUPPORT
+  USER
+}
+
+enum OrgRole {
+  ORG_OWNER
+  ORG_ADMIN
+  DEPARTMENT_HEAD
+  TEACHER
+  TEACHING_ASSISTANT
+  STUDENT
+  PARENT
+}
+
+enum OrganizationType {
+  SCHOOL
+  DISTRICT
+  UNIVERSITY
+  TUTORING_CENTER
+  CORPORATE
+  INDIVIDUAL
+}
+
+enum SubscriptionTier {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+}
+
+enum TestStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+  LONG_ANSWER
+  ESSAY
+  FILL_IN_BLANK
+}
+
+enum SubmissionStatus {
+  IN_PROGRESS
+  SUBMITTED
+  PENDING
+  GRADED
+}
+
+enum WorksheetStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum WorksheetItemType {
+  PROBLEM
+  INSTRUCTION
+  IMAGE
+  GRAPH
+  DIAGRAM
+  TABLE
+  FILL_IN_BLANK
+  SHORT_ANSWER
+  LONG_ANSWER
+  MULTIPLE_CHOICE
+}
+
+enum ClassMemberRole {
+  STUDENT
+  TEACHING_ASSISTANT
+}
+
+enum AssignmentType {
+  TEST
+  WORKSHEET
+  STUDY_SET
+  STUDY_GUIDE
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ============================================================================
+// USER & AUTHENTICATION
+// ============================================================================
+
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  name          String?
+  password      String
+  avatarUrl     String?
+  platformRole  PlatformRole @default(USER)
+  suspended     Boolean      @default(false)
+  birthdate     DateTime?
+  emailVerified Boolean      @default(false)
+  lastLoginAt   DateTime?
+  timezone      String       @default("America/New_York")
+  locale        String       @default("en-US")
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // Relations
+  sessions         Session[]
+  orgMemberships   OrganizationMember[]
+  testsCreated     Test[]
+  submissions      TestSubmission[]
+  classesOwned     Class[]
+  classMemberships ClassMember[]
+  studySets        StudySet[]
+  worksheets       Worksheet[]
+  studyGuides      StudyGuide[]
+  studyProgress    StudyProgress[]
+  auditLogs        AuditLog[]
+  aiJobs           AIJob[]
+  notifications    Notification[]
+  aiUsageLogs         AIUsageLog[]
+  testOverrides       TestStudentOverride[]
+  systemAnnouncements SystemAnnouncement[]
+  voucherRedemptions  VoucherRedemption[] @relation("VoucherRedemptions")
+  featureRequests     FeatureRequest[] @relation("FeatureRequests")
+  featureResponses    FeatureRequest[] @relation("FeatureResponses")
+
+  @@index([email])
+  @@index([platformRole])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  expiresAt DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([token])
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([token])
+}
+
+// ============================================================================
+// ORGANIZATION & MEMBERSHIP
+// ============================================================================
+
+model Organization {
+  id                 String             @id @default(cuid())
+  name               String
+  slug               String             @unique
+  type               OrganizationType   @default(SCHOOL)
+  logoUrl            String?
+  primaryColor       String?            @default("#3b82f6") // Brand primary color
+  secondaryColor     String?            @default("#1e40af") // Brand secondary color
+  email              String?
+  phone              String?
+  website            String?
+  address            String?
+  city               String?
+  state              String?
+  zipCode            String?
+  country            String?            @default("US")
+  timezone           String             @default("America/New_York")
+  subscriptionTier   SubscriptionTier   @default(ENTERPRISE)
+  subscriptionStatus SubscriptionStatus @default(ACTIVE)
+  maxStudents        Int                @default(999999)
+  maxTeachers        Int                @default(999999)
+  features           Json?
+  isActive           Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  // Billing
+  balance            Float              @default(0) // Current balance in dollars
+  billingEnabled     Boolean            @default(true) // Whether org has access (false when balance <= 0)
+  lastBillingDate    DateTime?          // Last time monthly fees were charged
+  monthlyUserFee     Float              @default(5) // $ per user per month
+
+  // Relations
+  members            OrganizationMember[]
+  departments        Department[]
+  classes            Class[]
+  terms              AcademicTerm[]
+  subjects           Subject[]
+  invites            OrganizationInvite[]
+  auditLogs          AuditLog[]
+  aiJobs             AIJob[]
+  aiUsageLogs        AIUsageLog[]
+  billingTransactions BillingTransaction[]
+  voucherRedemptions VoucherRedemption[]
+  featureRequests    FeatureRequest[]
+
+  @@index([slug])
+  @@index([type])
+}
+
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           OrgRole  @default(STUDENT)
+  title          String?
+  employeeId     String?
+  studentId      String?
+  departmentId   String?
+  isActive       Boolean  @default(true)
+  joinedAt       DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department   Department?  @relation(fields: [departmentId], references: [id])
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([role])
+}
+
+model OrganizationInvite {
+  id             String   @id @default(cuid())
+  organizationId String
+  email          String
+  role           OrgRole
+  token          String   @unique
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([token])
+}
+
+model OrganizationRequest {
+  id               String        @id @default(cuid())
+  status           RequestStatus @default(PENDING)
+  organizationName String
+  organizationType OrganizationType
+  contactName      String
+  contactEmail     String
+  contactPhone     String?
+  address          String?
+  city             String?
+  state            String?
+  zipCode          String?
+  country          String?       @default("US")
+  message          String?
+  reviewedBy       String?
+  reviewedAt       DateTime?
+  rejectionReason  String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([status])
+  @@index([contactEmail])
+}
+
+// ============================================================================
+// DEPARTMENTS & ACADEMIC STRUCTURE
+// ============================================================================
+
+model Department {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  headId         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members      OrganizationMember[]
+  subjects     Subject[]
+
+  @@index([organizationId])
+}
+
+model Subject {
+  id             String   @id @default(cuid())
+  organizationId String
+  departmentId   String?
+  name           String
+  code           String?
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department   Department?  @relation(fields: [departmentId], references: [id])
+  classes      Class[]
+
+  @@index([organizationId])
+}
+
+model AcademicTerm {
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String
+  startDate      DateTime
+  endDate        DateTime
+  isCurrent      Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+// ============================================================================
+// CLASS MANAGEMENT
+// ============================================================================
+
+model Class {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  joinCode       String   @unique @map("code")
+  teacherId      String
+  organizationId String?
+  subjectId      String?
+  theme          String   @default("#6366f1")
+  emoji          String?  @default("📚")
+  archived       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  teacher      User              @relation(fields: [teacherId], references: [id])
+  organization Organization?     @relation(fields: [organizationId], references: [id])
+  subject      Subject?          @relation(fields: [subjectId], references: [id])
+  members      ClassMember[]
+  assignments  ClassAssignment[]
+  studySets    StudySet[]
+  tests        ClassTest[]
+
+  @@index([joinCode])
+  @@index([teacherId])
+  @@index([organizationId])
+}
+
+model ClassMember {
+  id        String          @id @default(cuid())
+  classId   String
+  userId    String
+  role      ClassMemberRole @default(STUDENT)
+  joinedAt  DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, userId])
+  @@index([classId])
+  @@index([userId])
+}
+
+model ClassTest {
+  id        String   @id @default(cuid())
+  classId   String
+  testId    String
+  createdAt DateTime @default(now())
+
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  test  Test  @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, testId])
+  @@index([classId])
+  @@index([testId])
+}
+
+model ClassAssignment {
+  id           String         @id @default(cuid())
+  classId      String
+  type         AssignmentType
+  testId       String?
+  worksheetId  String?
+  studySetId   String?
+  studyGuideId String?
+  title        String?
+  instructions String?
+  dueDate      DateTime?
+  availableAt  DateTime?
+  closesAt     DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  class      Class       @relation(fields: [classId], references: [id], onDelete: Cascade)
+  test       Test?       @relation(fields: [testId], references: [id], onDelete: Cascade)
+  worksheet  Worksheet?  @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
+  studySet   StudySet?   @relation(fields: [studySetId], references: [id], onDelete: Cascade)
+  studyGuide StudyGuide? @relation(fields: [studyGuideId], references: [id], onDelete: Cascade)
+
+  @@index([classId])
+  @@index([testId])
+  @@index([studyGuideId])
+  @@index([dueDate])
+}
+
+// ============================================================================
+// TESTS & QUESTIONS
+// ============================================================================
+
+model Test {
+  id                     String     @id @default(cuid())
+  title                  String
+  description            String?
+  accessCode             String     @unique
+  teacherId              String
+  status                 TestStatus @default(DRAFT)
+  autoGrade              Boolean    @default(false)
+  aiOpenEndedGrading     Boolean    @default(true) // AI grades non-MC questions on submit
+  showResultsImmediately Boolean    @default(true)
+  showCorrectAnswers     Boolean    @default(true) // Show correct answers after grading
+  timeLimit              Int? // Time limit in minutes
+  startDate              DateTime?
+  endDate                DateTime?
+  autoUnpublishAt        DateTime? // Auto unpublish at this time
+  scrambleQuestions      Boolean    @default(true)
+  scrambleOptions        Boolean    @default(true) // Scramble multiple choice options
+  studyGuide             String?    @db.Text
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+
+  // Retake Settings
+  maxAttempts            Int        @default(1) // 1 = no retakes, 0 = unlimited
+  allowLateSubmission    Boolean    @default(false)
+  latePenaltyPercent     Int        @default(0) // Percentage deducted for late submission
+
+  // Security Settings
+  requireFullscreen      Boolean    @default(true)
+  detectTabSwitch        Boolean    @default(true)
+  detectMouseLeave       Boolean    @default(false)
+  blockCopyPaste         Boolean    @default(true)
+  blockRightClick        Boolean    @default(true)
+  blockKeyboardShortcuts Boolean    @default(true)
+  maxTabSwitches         Int        @default(3) // 0 = unlimited warnings
+  maxMouseLeaves         Int        @default(5) // 0 = unlimited warnings
+  autoSubmitOnViolation  Boolean    @default(false) // Auto submit when max violations reached
+  showViolationWarnings  Boolean    @default(true) // Show warning modals
+  recordViolations       Boolean    @default(true) // Track violations in database
+  requireWebcam          Boolean    @default(false) // Require webcam (future feature)
+  browserLockdown        Boolean    @default(false) // Strictest mode - all security on
+
+  teacher          User                   @relation(fields: [teacherId], references: [id])
+  questions        Question[]
+  submissions      TestSubmission[]
+  assignments      ClassAssignment[]
+  classes          ClassTest[]
+  studyGuides      StudyGuide[]
+  studentOverrides TestStudentOverride[]
+
+  @@index([accessCode])
+  @@index([teacherId])
+  @@index([status])
+  @@index([autoUnpublishAt])
+}
+
+// Student-specific test overrides (for individual retakes, extended time, etc.)
+model TestStudentOverride {
+  id              String    @id @default(cuid())
+  testId          String
+  studentId       String
+  extraAttempts   Int       @default(0) // Additional attempts beyond maxAttempts
+  extraTimeMinutes Int      @default(0) // Additional time in minutes
+  extendedDeadline DateTime? // Extended deadline for this student
+  notes           String?   // Teacher notes about why override was given
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  test    Test @relation(fields: [testId], references: [id], onDelete: Cascade)
+  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([testId, studentId])
+  @@index([testId])
+  @@index([studentId])
+}
+
+model Question {
+  id            String       @id @default(cuid())
+  testId        String
+  type          QuestionType
+  question      String       @db.Text
+  options       Json?
+  correctAnswer String?      @db.Text
+  points        Int          @default(1)
+  order         Int
+  aiGenerated   Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  test    Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  answers Answer[]
+
+  @@index([testId])
+}
+
+// ============================================================================
+// TEST SUBMISSIONS & ANSWERS
+// ============================================================================
+
+model TestSubmission {
+  id            String           @id @default(cuid())
+  testId        String
+  studentId     String
+  attemptNumber Int              @default(1) // Which attempt this is
+  status        SubmissionStatus @default(IN_PROGRESS)
+  score         Float?
+  totalPoints   Int?
+  percentage    Float?
+  feedback      String?          @db.Text
+  startedAt     DateTime         @default(now())
+  submittedAt   DateTime?
+  gradedAt      DateTime?
+
+  // Violation tracking
+  tabSwitchCount   Int @default(0)
+  mouseLeaveCount  Int @default(0)
+  copyPasteAttempts Int @default(0)
+  rightClickAttempts Int @default(0)
+  fullscreenExits  Int @default(0)
+  violations       Json? // Detailed violation log with timestamps
+
+  test    Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  student User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  answers Answer[]
+
+  @@unique([testId, studentId, attemptNumber])
+  @@index([testId])
+  @@index([studentId])
+  @@index([status])
+}
+
+model Answer {
+  id            String   @id @default(cuid())
+  submissionId  String
+  questionId    String
+  answer        String?  @db.Text
+  isCorrect     Boolean?
+  pointsAwarded Float?
+  feedback      String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  submission TestSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  question   Question       @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, questionId])
+  @@index([submissionId])
+  @@index([questionId])
+}
+
+// ============================================================================
+// STUDY SETS (FLASHCARDS)
+// ============================================================================
+
+model StudySet {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  creatorId   String
+  isPublic    Boolean  @default(false)
+  shareCode   String?  @unique
+  classId     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  creator     User              @relation(fields: [creatorId], references: [id])
+  class       Class?            @relation(fields: [classId], references: [id])
+  cards       StudyCard[]
+  progress    StudyProgress[]
+  assignments ClassAssignment[]
+
+  @@index([creatorId])
+  @@index([classId])
+  @@index([shareCode])
+}
+
+model StudyCard {
+  id         String   @id @default(cuid())
+  studySetId String
+  front      String   @db.Text @map("term")
+  back       String   @db.Text @map("definition")
+  order      Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  studySet StudySet @relation(fields: [studySetId], references: [id], onDelete: Cascade)
+
+  @@index([studySetId])
+}
+
+model StudyProgress {
+  id         String   @id @default(cuid())
+  userId     String
+  studySetId String
+  cardId     String?
+  mastery    Float    @default(0)
+  streak     Int      @default(0)
+  lastStudy  DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studySet StudySet @relation(fields: [studySetId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, studySetId])
+  @@index([userId])
+  @@index([studySetId])
+}
+
+// ============================================================================
+// WORKSHEETS
+// ============================================================================
+
+model Worksheet {
+  id               String          @id @default(cuid())
+  title            String
+  description      String?
+  subject          String?
+  gradeLevel       String?
+  teacherId        String
+  status           WorksheetStatus @default(DRAFT)
+  includeAnswerKey Boolean         @default(true)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  teacher     User              @relation(fields: [teacherId], references: [id])
+  items       WorksheetItem[]
+  assignments ClassAssignment[]
+
+  @@index([teacherId])
+  @@index([status])
+}
+
+model WorksheetItem {
+  id           String            @id @default(cuid())
+  worksheetId  String
+  type         WorksheetItemType
+  content      String            @db.Text
+  imageUrl     String?           @db.Text
+  imageCaption String?
+  options      Json?
+  answer       String?           @db.Text
+  hint         String?
+  difficulty   String?
+  order        Int
+  aiGenerated  Boolean           @default(false)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  worksheet Worksheet @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
+
+  @@index([worksheetId])
+}
+
+model StudyGuide {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  content     String   @db.Text
+  sourceTestId String?
+  teacherId   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teacher     User              @relation(fields: [teacherId], references: [id])
+  sourceTest  Test?             @relation(fields: [sourceTestId], references: [id])
+  assignments ClassAssignment[]
+
+  @@index([teacherId])
+  @@index([sourceTestId])
+}
+
+// ============================================================================
+// SYSTEM & AUDIT
+// ============================================================================
+
+model SystemConfig {
+  id        String   @id @default("singleton")
+  aiModel   String   @default("anthropic/claude-opus-4-1-20250805")
+  features  Json?
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  userId         String?
+  organizationId String?
+  action         String
+  entityType     String?
+  entityId       String?
+  details        Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  user         User?         @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// AI JOBS & NOTIFICATIONS
+// ============================================================================
+
+model AIJob {
+  id          String    @id @default(cuid())
+  type        String    // TEST_GENERATION, STUDY_GUIDE, WORKSHEET, FLASHCARDS, GRADING
+  status      String    @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED
+  input       Json      // Input parameters for the job
+  output      Json?     // Generated result
+  error       String?   @db.Text
+  progress    Int       @default(0) // 0-100 percentage
+  userId      String
+  orgId       String?
+  entityId    String?   // ID of created entity (test, worksheet, etc.)
+  entityType  String?   // Type of created entity
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization  Organization?  @relation(fields: [orgId], references: [id])
+  notifications Notification[]
+
+  @@index([userId])
+  @@index([orgId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  type      String   // JOB_COMPLETE, JOB_FAILED, ASSIGNMENT, GRADE, etc.
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  link      String?  // URL to navigate to
+  userId    String
+  jobId     String?
+  createdAt DateTime @default(now())
+
+  user User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job  AIJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+}
+
+model AIUsageLog {
+  id           String   @id @default(cuid())
+  type         String   // Operation type: TEST_GENERATION, GRADING, STUDY_GUIDE, etc.
+  model        String   // AI model used
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  totalTokens  Int      @default(0)
+  cost         Float    @default(0) // Estimated cost in USD
+  duration     Int      @default(0) // Duration in milliseconds
+  success      Boolean  @default(true)
+  error        String?
+  metadata     Json?    // Additional context
+  userId       String
+  orgId        String?
+  createdAt    DateTime @default(now())
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [orgId], references: [id])
+
+  @@index([userId])
+  @@index([orgId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model SystemAnnouncement {
+  id          String    @id @default(cuid())
+  title       String
+  content     String
+  type        String    @default("info") // info, warning, success, error
+  isActive    Boolean   @default(true)
+  targetRoles String[]  // Empty = all roles, or specific roles like ["TEACHER", "STUDENT"]
+  targetOrgs  String[]  // Empty = all orgs, or specific org IDs
+  startsAt    DateTime  @default(now())
+  endsAt      DateTime?
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  createdBy User @relation(fields: [createdById], references: [id])
+
+  @@index([isActive])
+  @@index([startsAt])
+  @@index([endsAt])
+}
+
+// ============================================================================
+// BILLING & VOUCHERS
+// ============================================================================
+
+enum TransactionType {
+  CREDIT       // Admin added balance
+  VOUCHER      // Voucher redeemed
+  USER_FEE     // Monthly user fee charge
+  AI_USAGE     // AI usage charge
+  REFUND       // Refund
+  ADJUSTMENT   // Manual adjustment
+}
+
+model BillingTransaction {
+  id             String          @id @default(cuid())
+  organizationId String
+  type           TransactionType
+  amount         Float           // Positive for credits, negative for charges
+  balance        Float           // Balance after transaction
+  description    String
+  metadata       Json?           // Extra info like voucher code, user count, etc.
+  createdById    String?         // Who created this transaction (admin)
+  createdAt      DateTime        @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model VoucherCode {
+  id           String    @id @default(cuid())
+  code         String    @unique
+  amount       Float     // Credit amount in dollars
+  description  String?
+  maxUses      Int       @default(1) // How many times it can be used
+  usedCount    Int       @default(0) // How many times it's been used
+  expiresAt    DateTime?
+  isActive     Boolean   @default(true)
+  createdById  String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  redemptions VoucherRedemption[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+model VoucherRedemption {
+  id             String   @id @default(cuid())
+  voucherId      String
+  organizationId String
+  redeemedById   String   // User who redeemed
+  amount         Float    // Amount credited
+  redeemedAt     DateTime @default(now())
+
+  voucher      VoucherCode  @relation(fields: [voucherId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  redeemedBy   User         @relation("VoucherRedemptions", fields: [redeemedById], references: [id])
+
+  @@unique([voucherId, organizationId]) // Each org can only redeem a voucher once
+  @@index([organizationId])
+}
+
+model FeatureRequest {
+  id           String    @id @default(cuid())
+  title        String
+  description  String
+  category     String    @default("general") // general, ui, feature, bug, improvement
+  priority     String    @default("medium") // low, medium, high
+  status       String    @default("pending") // pending, in-review, planned, in-progress, completed, rejected
+  
+  // Who submitted it
+  userId       String
+  userEmail    String
+  userName     String?
+  orgId        String?
+  orgName      String?
+  userRole     String?   // TEACHER, ORG_ADMIN, etc.
+  
+  // Admin response
+  adminResponse String?
+  respondedById String?
+  respondedAt   DateTime?
+  
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user         User          @relation("FeatureRequests", fields: [userId], references: [id], onDelete: Cascade)
+  respondedBy  User?         @relation("FeatureResponses", fields: [respondedById], references: [id])
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([orgId])
+  @@index([status])
+  @@index([createdAt])
+}
