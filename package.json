@@ -51,6 +51,7 @@
 		"nodemailer": "^7.0.11",
 		"prisma": "^5.22.0",
 		"sveltekit-superforms": "^2.29.1",
+		"valibot": "^1.2.0",
 		"zod": "^4.2.1"
 	}
 }
