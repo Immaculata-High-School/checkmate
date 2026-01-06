@@ -58,16 +58,14 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOST=0.0.0.0
 
-# Copy package files and Prisma schema first
+# Copy package files first
 COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/package-lock.json ./package-lock.json
-COPY --from=builder /app/prisma ./prisma
 
-# Install only production dependencies and generate Prisma client
-RUN npm ci --omit=dev --ignore-scripts && npx prisma generate
-
-# Copy built application after dependencies are installed
+# Copy built application 
 COPY --from=builder /app/build ./build
+
+# Copy node_modules from builder (includes properly generated Prisma client)
+COPY --from=builder /app/node_modules ./node_modules
 
 # Change ownership to non-root user
 RUN chown -R sveltekit:nodejs /app
