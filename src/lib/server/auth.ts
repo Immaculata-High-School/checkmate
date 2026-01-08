@@ -2,6 +2,7 @@ import { Lucia } from 'lucia';
 import { PrismaAdapter } from '@lucia-auth/adapter-prisma';
 import { dev } from '$app/environment';
 import { prisma } from './db';
+import { cache } from './cache';
 import type { PlatformRole, OrgRole } from '@prisma/client';
 
 const adapter = new PrismaAdapter(prisma.session, prisma.user);
@@ -50,6 +51,11 @@ export interface OrgMembership {
 }
 
 export async function getUserOrgMemberships(userId: string): Promise<OrgMembership[]> {
+  // Cache org memberships for 5 minutes - they rarely change
+  const cacheKey = `org_memberships:${userId}`;
+  const cached = cache.get<OrgMembership[]>(cacheKey);
+  if (cached) return cached;
+
   const memberships = await prisma.organizationMember.findMany({
     where: { userId, isActive: true },
     select: {
@@ -64,12 +70,20 @@ export async function getUserOrgMemberships(userId: string): Promise<OrgMembersh
     }
   });
 
-  return memberships.map((m) => ({
+  const result = memberships.map((m) => ({
     orgId: m.organization.id,
     orgSlug: m.organization.slug,
     orgName: m.organization.name,
     role: m.role
   }));
+
+  cache.set(cacheKey, result, 5 * 60 * 1000); // 5 minutes
+  return result;
+}
+
+// Invalidate user's org membership cache when it changes
+export function invalidateUserOrgCache(userId: string): void {
+  cache.delete(`org_memberships:${userId}`);
 }
 
 export type EffectiveRole = 'admin' | 'support' | 'teacher' | 'student' | 'guest';

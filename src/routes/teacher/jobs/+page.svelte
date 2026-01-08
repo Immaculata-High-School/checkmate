@@ -30,7 +30,8 @@
       STUDY_GUIDE: { label: 'Study Guide', icon: BookOpen, color: 'amber' },
       WORKSHEET_GENERATION: { label: 'Worksheet', icon: ClipboardList, color: 'green' },
       FLASHCARD_GENERATION: { label: 'Flashcards', icon: Sparkles, color: 'purple' },
-      TEST_GRADING: { label: 'Grading', icon: CheckCircle, color: 'indigo' }
+      TEST_GRADING: { label: 'Grading', icon: CheckCircle, color: 'indigo' },
+      POWERSCHOOL_SYNC: { label: 'PowerSchool Sync', icon: ExternalLink, color: 'teal' }
     };
     return types[type] || { label: type, icon: Cpu, color: 'gray' };
   }
@@ -104,9 +105,9 @@
         <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
           <Cpu class="w-5 h-5 text-purple-600" />
         </div>
-        AI Jobs
+        Compute Jobs
       </h1>
-      <p class="text-gray-500 mt-1">Track your AI generation tasks</p>
+      <p class="text-gray-500 mt-1">Track your background tasks</p>
     </div>
     <button onclick={refresh} disabled={refreshing} class="btn btn-secondary">
       <RefreshCw class="w-4 h-4 {refreshing ? 'animate-spin' : ''}" />
@@ -149,9 +150,9 @@
         <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <Cpu class="w-8 h-8 text-gray-400" />
         </div>
-        <h3 class="font-semibold text-gray-900 mb-1">No AI Jobs Yet</h3>
+        <h3 class="font-semibold text-gray-900 mb-1">No Compute Jobs Yet</h3>
         <p class="text-gray-500">
-          AI jobs will appear here when you generate tests, study guides, or worksheets.
+          Jobs will appear here when you generate tests, study guides, worksheets, or sync grades.
         </p>
       </div>
     {:else}

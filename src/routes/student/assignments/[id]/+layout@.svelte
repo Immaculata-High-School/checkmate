@@ -101,9 +101,9 @@
     return () => document.removeEventListener('contextmenu', handleContextMenu);
   });
 
-  // Detect tab switching
+  // Detect tab switching (disabled on results page)
   $effect(() => {
-    if (!browser || !testStarted || !security.detectTabSwitch) return;
+    if (!browser || !testStarted || !security.detectTabSwitch || isResultsPage) return;
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
@@ -122,9 +122,9 @@
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   });
 
-  // Detect mouse leaving window
+  // Detect mouse leaving window (disabled on results page)
   $effect(() => {
-    if (!browser || !testStarted || !security.detectMouseLeave) return;
+    if (!browser || !testStarted || !security.detectMouseLeave || isResultsPage) return;
 
     const handleMouseLeave = (e: MouseEvent) => {
       // Only count if mouse actually left the window
@@ -208,9 +208,9 @@
     return () => document.removeEventListener('keydown', handleKeyDown);
   });
 
-  // Warn before leaving
+  // Warn before leaving (allow navigation from results page)
   beforeNavigate(({ cancel, to }) => {
-    if (to?.url.pathname.includes('/results')) return;
+    if (to?.url.pathname.includes('/results') || isResultsPage) return;
 
     if (testStarted && !showExitWarning && !autoSubmitting) {
       cancel();
@@ -218,9 +218,9 @@
     }
   });
 
-  // Browser beforeunload warning
+  // Browser beforeunload warning (disabled on results page)
   $effect(() => {
-    if (!browser || !testStarted) return;
+    if (!browser || !testStarted || isResultsPage) return;
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();

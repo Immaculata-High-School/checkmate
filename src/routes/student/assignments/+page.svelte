@@ -27,8 +27,9 @@
 
   function formatScore(submission: any) {
     if (!submission || submission.status !== 'GRADED') return null;
-    const percentage = Math.round((submission.score / submission.totalPoints) * 100);
-    return `${submission.score}/${submission.totalPoints} (${percentage}%)`;
+    const totalScore = (submission.score || 0) + (submission.bonusPoints || 0);
+    const percentage = Math.round(Math.min(100, (totalScore / submission.totalPoints) * 100));
+    return `${totalScore}/${submission.totalPoints} (${percentage}%)${submission.bonusPoints ? ` +${submission.bonusPoints}` : ''}`;
   }
 </script>
 

@@ -343,6 +343,13 @@ export const actions: Actions = {
         secure: process.env.NODE_ENV === 'production',
         maxAge: 60 * 60 * 2
       });
+      // Also store the org slug to return to
+      cookies.set('org_admin_return_slug', params.slug, {
+        path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 60 * 60 * 2
+      });
     }
 
     // Create new session for impersonated user

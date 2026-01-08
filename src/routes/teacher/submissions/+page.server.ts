@@ -1,6 +1,7 @@
 import { prisma } from '$lib/server/db';
 import { fail } from '@sveltejs/kit';
 import { shuttleAI } from '$lib/server/shuttleai';
+import { canMakeRequest, recordRequest, getRateLimitStatus } from '$lib/server/rateLimiter';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -118,13 +119,21 @@ export const actions: Actions = {
       return fail(400, { error: 'Submission ID required' });
     }
 
+    // Check rate limit
+    if (!canMakeRequest()) {
+      const status = getRateLimitStatus();
+      const waitTime = status.nextSlotAvailableIn ? Math.ceil(status.nextSlotAvailableIn / 1000) : 60;
+      return fail(429, { error: `Rate limited. Please try again in ${waitTime} seconds.` });
+    }
+
     const submission = await prisma.testSubmission.findUnique({
       where: { id: submissionId },
       include: {
         test: true,
         answers: {
           include: { question: true }
-        }
+        },
+        student: true
       }
     });
 
@@ -136,6 +145,29 @@ export const actions: Actions = {
     const membership = await prisma.organizationMember.findFirst({
       where: { userId: locals.user!.id }
     });
+
+    // Create AI job for tracking
+    const job = await prisma.aIJob.create({
+      data: {
+        type: 'TEST_GRADING',
+        status: 'RUNNING',
+        input: {
+          testTitle: submission.test.title,
+          submissionId: submission.id,
+          studentId: submission.studentId,
+          studentName: submission.student.name,
+          questionCount: submission.answers.length
+        },
+        entityId: submission.test.id,
+        entityType: 'TEST',
+        userId: locals.user!.id,
+        orgId: membership?.organizationId,
+        startedAt: new Date()
+      }
+    });
+
+    // Record this request for rate limiting
+    recordRequest();
 
     try {
       // Use AI to grade the entire test with test-specific settings
@@ -177,9 +209,36 @@ export const actions: Actions = {
         }
       });
 
+      // Update job as completed
+      await prisma.aIJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'COMPLETED',
+          progress: 100,
+          output: {
+            totalScore: result.totalScore,
+            totalPoints: result.totalPoints,
+            gradedAnswersCount: result.gradedAnswers.length,
+            overallFeedback: result.overallFeedback
+          },
+          completedAt: new Date()
+        }
+      });
+
       return { aiSuccess: true, message: 'AI grading completed successfully' };
     } catch (error) {
       console.error('AI grading error:', error);
+      
+      // Update job as failed
+      await prisma.aIJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'FAILED',
+          error: error instanceof Error ? error.message : 'AI grading failed',
+          completedAt: new Date()
+        }
+      });
+      
       return fail(500, { error: 'AI grading failed. Please try manual grading.' });
     }
   },

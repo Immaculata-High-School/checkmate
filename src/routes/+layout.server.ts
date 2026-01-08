@@ -5,6 +5,8 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     user: locals.user,
     effectiveRole: locals.effectiveRole,
     orgMemberships: locals.orgMemberships,
-    isImpersonating: locals.isImpersonating
+    isImpersonating: locals.isImpersonating,
+    isOrgAdminImpersonating: locals.isOrgAdminImpersonating,
+    orgAdminReturnSlug: locals.orgAdminReturnSlug
   };
 };

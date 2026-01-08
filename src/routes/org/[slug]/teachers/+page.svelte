@@ -173,7 +173,13 @@
                 {#if openMenu === member.id}
                   <div class="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
                     {#if member.role !== 'ORG_OWNER'}
-                      <form method="POST" action="?/impersonate" use:enhance>
+                      <form method="POST" action="?/impersonate" use:enhance={() => {
+                        return async ({ result }) => {
+                          if (result.type === 'success' && result.data?.redirect) {
+                            window.location.href = result.data.redirect;
+                          }
+                        };
+                      }}>
                         <input type="hidden" name="userId" value={member.user.id} />
                         <button type="submit" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                           <LogIn class="w-4 h-4" />

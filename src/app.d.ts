@@ -9,6 +9,8 @@ declare global {
       orgMemberships: OrgMembership[];
       effectiveRole: EffectiveRole;
       isImpersonating: boolean;
+      isOrgAdminImpersonating: boolean;
+      orgAdminReturnSlug: string | null;
     }
 
     interface PageData {
@@ -16,6 +18,8 @@ declare global {
       effectiveRole: EffectiveRole;
       orgMemberships: OrgMembership[];
       isImpersonating: boolean;
+      isOrgAdminImpersonating: boolean;
+      orgAdminReturnSlug: string | null;
     }
   }
 }

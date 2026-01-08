@@ -111,7 +111,8 @@
       SHORT_ANSWER: 'Short Answer',
       LONG_ANSWER: 'Long Answer',
       ESSAY: 'Essay',
-      FILL_IN_BLANK: 'Fill in the Blank'
+      FILL_IN_BLANK: 'Fill in the Blank',
+      PROGRAMMING: 'Programming'
     };
     return labels[type] || type;
   }
@@ -449,6 +450,47 @@
                         class="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-500"
                       />
                     {/if}
+                  </div>
+                {:else if currentQuestion.type === 'PROGRAMMING'}
+                  {@const langInfo = (currentQuestion.options as any)?.programmingLanguage || 'python'}
+                  <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2">
+                        <span class="px-3 py-1 bg-gray-800 text-gray-100 text-sm font-mono rounded-md">
+                          {langInfo}
+                        </span>
+                        <span class="text-sm text-gray-500">Write your code below</span>
+                      </div>
+                      {#if answers[currentQuestion.id]}
+                        <div class="flex items-center gap-1 text-emerald-500 text-sm">
+                          <CheckCircle class="w-4 h-4" />
+                          <span>Saved</span>
+                        </div>
+                      {/if}
+                    </div>
+                    <div class="relative border border-gray-300 rounded-lg overflow-hidden bg-gray-900">
+                      <div class="absolute top-0 left-0 right-0 h-8 bg-gray-800 flex items-center px-3 gap-2">
+                        <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                        <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                        <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                        <span class="ml-2 text-xs text-gray-400 font-mono">code.{langInfo}</span>
+                      </div>
+                      <textarea
+                        value={answers[currentQuestion.id] || ''}
+                        oninput={(e) => saveAnswer(currentQuestion.id, e.currentTarget.value)}
+                        placeholder={`// Write your ${langInfo} code here...\n\n`}
+                        rows="12"
+                        spellcheck="false"
+                        class="w-full pt-10 pb-4 px-4 bg-gray-900 text-gray-100 font-mono text-sm leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
+                        style="tab-size: 4;"
+                      ></textarea>
+                      <div class="absolute bottom-2 right-3 text-xs text-gray-500 font-mono">
+                        {(answers[currentQuestion.id] || '').split('\n').length} lines
+                      </div>
+                    </div>
+                    <p class="text-xs text-gray-500">
+                      💡 Tip: Use proper indentation and include comments to explain your code.
+                    </p>
                   </div>
                 {:else}
                   <div class="relative">

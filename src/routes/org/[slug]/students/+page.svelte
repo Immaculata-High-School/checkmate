@@ -1,28 +1,43 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import {
     GraduationCap,
     Search,
     Mail,
     Calendar,
     BookOpen,
-    Clock
+    Clock,
+    ChevronLeftIcon,
+    ChevronRightIcon
   } from 'lucide-svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
 
-  let searchQuery = $state('');
+  let searchInput = $state(data.search || '');
+  let searchTimeout: ReturnType<typeof setTimeout>;
 
-  const filteredStudents = $derived(() => {
-    if (!searchQuery) return data.students;
-    const query = searchQuery.toLowerCase();
-    return data.students.filter(
-      (s) =>
-        s.user.name?.toLowerCase().includes(query) ||
-        s.user.email.toLowerCase().includes(query) ||
-        s.studentId?.toLowerCase().includes(query)
-    );
-  });
+  // Debounced search
+  function handleSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      const url = new URL($page.url);
+      if (searchInput) {
+        url.searchParams.set('search', searchInput);
+      } else {
+        url.searchParams.delete('search');
+      }
+      url.searchParams.set('page', '1');
+      goto(url.toString(), { replaceState: true });
+    }, 300);
+  }
+
+  function goToPage(pageNum: number) {
+    const url = new URL($page.url);
+    url.searchParams.set('page', pageNum.toString());
+    goto(url.toString());
+  }
 
   function formatDate(date: Date | string | null) {
     if (!date) return 'Never';
@@ -46,7 +61,7 @@
       <p class="text-gray-500 mt-1">View all students in your organization</p>
     </div>
     <div class="text-sm text-gray-500">
-      {filteredStudents().length} students
+      {data.total} total students
     </div>
   </div>
 
@@ -57,7 +72,8 @@
       <input
         type="text"
         placeholder="Search by name, email, or student ID..."
-        bind:value={searchQuery}
+        bind:value={searchInput}
+        oninput={handleSearch}
         class="input pl-10"
       />
     </div>
@@ -76,7 +92,7 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-gray-200">
-        {#each filteredStudents() as student}
+        {#each data.students as student}
           <tr class="hover:bg-gray-50">
             <td class="px-4 py-4">
               <div class="flex items-center gap-3">
@@ -108,7 +124,7 @@
         {:else}
           <tr>
             <td colspan="5" class="px-4 py-8 text-center text-gray-500">
-              {#if searchQuery}
+              {#if data.search}
                 No students match your search.
               {:else}
                 No students in this organization yet.
@@ -119,4 +135,34 @@
       </tbody>
     </table>
   </div>
+
+  <!-- Pagination -->
+  {#if data.totalPages > 1}
+    <div class="flex items-center justify-between mt-4 px-2">
+      <p class="text-sm text-gray-600">
+        Showing {(data.page - 1) * data.pageSize + 1} - {Math.min(data.page * data.pageSize, data.total)} of {data.total}
+      </p>
+      <div class="flex items-center gap-2">
+        <button
+          onclick={() => goToPage(data.page - 1)}
+          disabled={data.page <= 1}
+          class="btn btn-secondary btn-sm"
+        >
+          <ChevronLeftIcon class="w-4 h-4" />
+          Previous
+        </button>
+        <span class="text-sm text-gray-600 px-2">
+          Page {data.page} of {data.totalPages}
+        </span>
+        <button
+          onclick={() => goToPage(data.page + 1)}
+          disabled={data.page >= data.totalPages}
+          class="btn btn-secondary btn-sm"
+        >
+          Next
+          <ChevronRightIcon class="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  {/if}
 </div>

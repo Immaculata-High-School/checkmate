@@ -72,7 +72,7 @@
     gradedSubmissions.length > 0
       ? Math.round(
           gradedSubmissions.reduce(
-            (sum, s) => sum + ((s.score || 0) / (s.totalPoints || 1)) * 100,
+            (sum, s) => sum + (Math.min((s.score || 0) + (s.bonusPoints || 0), s.totalPoints || 1) / (s.totalPoints || 1)) * 100,
             0
           ) / gradedSubmissions.length
         )
@@ -515,8 +515,9 @@
                     </div>
                   </div>
                   {#if submission.status === 'GRADED'}
+                    {@const totalScore = (submission.score || 0) + (submission.bonusPoints || 0)}
                     <span class="badge badge-green">
-                      {Math.round(((submission.score || 0) / (submission.totalPoints || 1)) * 100)}%
+                      {Math.round(Math.min(100, (totalScore / (submission.totalPoints || 1)) * 100))}%
                     </span>
                   {:else if submission.status === 'SUBMITTED'}
                     <span class="badge badge-yellow">Pending</span>

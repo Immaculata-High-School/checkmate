@@ -134,6 +134,8 @@
         {:else}
           <div class="space-y-3">
             {#each data.recentSubmissions as submission}
+              {@const totalScore = (submission.score || 0) + (submission.bonusPoints || 0)}
+              {@const percentage = Math.round(Math.min(100, totalScore / (submission.totalPoints || 1) * 100))}
               <div class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50">
                 <div>
                   <div class="font-medium text-gray-900">{submission.student.name}</div>
@@ -141,7 +143,7 @@
                 </div>
                 {#if submission.status === 'GRADED'}
                   <span class="badge badge-green">
-                    {Math.round((submission.score || 0) / (submission.totalPoints || 1) * 100)}%
+                    {percentage}%
                   </span>
                 {:else if submission.status === 'SUBMITTED'}
                   <span class="badge badge-yellow">Needs Grading</span>

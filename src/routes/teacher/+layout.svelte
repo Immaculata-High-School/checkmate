@@ -36,7 +36,7 @@
     { href: '/teacher/worksheets', label: 'Worksheets', icon: ClipboardList },
     { href: '/teacher/study-guides', label: 'Study Guides', icon: BookMarked },
     { href: '/teacher/study-sets', label: 'Flashcards', icon: Library },
-    { href: '/teacher/jobs', label: 'AI Jobs', icon: Cpu },
+    { href: '/teacher/jobs', label: 'Compute Jobs', icon: Cpu },
     { href: '/teacher/feature-request', label: 'Feature Request', icon: Lightbulb }
   ];
 
@@ -111,7 +111,7 @@
 
       <!-- User section -->
       <div class="p-3 border-t border-gray-200">
-        <a href="/account" class="nav-link">
+        <a href="/teacher/settings" class="nav-link">
           <Settings class="w-5 h-5" />
           Settings
         </a>

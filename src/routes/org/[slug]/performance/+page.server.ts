@@ -27,7 +27,7 @@ export const load: PageServerLoad = async ({ parent }) => {
     include: {
       submissions: {
         where: { status: 'GRADED' },
-        select: { score: true, totalPoints: true }
+        select: { score: true, totalPoints: true, bonusPoints: true }
       },
       teacher: { select: { id: true, name: true } },
       _count: { select: { submissions: true, questions: true } }
@@ -40,7 +40,7 @@ export const load: PageServerLoad = async ({ parent }) => {
   const testStats = tests.map(test => {
     const gradedSubmissions = test.submissions;
     const avgScore = gradedSubmissions.length > 0
-      ? gradedSubmissions.reduce((sum, s) => sum + ((s.totalPoints || 0) > 0 ? ((s.score || 0) / (s.totalPoints || 1)) * 100 : 0), 0) / gradedSubmissions.length
+      ? gradedSubmissions.reduce((sum, s) => sum + ((s.totalPoints || 0) > 0 ? Math.min(100, ((s.score || 0) + (s.bonusPoints || 0)) / (s.totalPoints || 1) * 100) : 0), 0) / gradedSubmissions.length
       : null;
 
     return {
@@ -102,7 +102,7 @@ export const load: PageServerLoad = async ({ parent }) => {
             include: {
               submissions: {
                 where: { status: 'GRADED' },
-                select: { score: true, totalPoints: true }
+                select: { score: true, totalPoints: true, bonusPoints: true }
               }
             }
           }
@@ -111,7 +111,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 
       const allSubmissions = classTests.flatMap(ct => ct.test.submissions);
       const avgScore = allSubmissions.length > 0
-        ? allSubmissions.reduce((sum, s) => sum + ((s.totalPoints || 0) > 0 ? ((s.score || 0) / (s.totalPoints || 1)) * 100 : 0), 0) / allSubmissions.length
+        ? allSubmissions.reduce((sum, s) => sum + ((s.totalPoints || 0) > 0 ? Math.min(100, ((s.score || 0) + (s.bonusPoints || 0)) / (s.totalPoints || 1) * 100) : 0), 0) / allSubmissions.length
         : null;
 
       return {

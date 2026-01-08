@@ -92,7 +92,8 @@
     {:else}
       <div class="divide-y divide-gray-100">
         {#each data.submissions as submission}
-          {@const percentage = Math.round((submission.score || 0) / (submission.totalPoints || 1) * 100)}
+          {@const totalScore = (submission.score || 0) + (submission.bonusPoints || 0)}
+          {@const percentage = Math.round(Math.min(100, totalScore / (submission.totalPoints || 1) * 100))}
           <div class="p-4 flex items-center justify-between">
             <div>
               <h3 class="font-medium text-gray-900">{submission.test.title}</h3>
@@ -101,7 +102,7 @@
               </p>
             </div>
             <div class="flex items-center gap-3">
-              <span class="text-gray-600">{submission.score}/{submission.totalPoints}</span>
+              <span class="text-gray-600">{totalScore}/{submission.totalPoints}{submission.bonusPoints ? ` (+${submission.bonusPoints})` : ''}</span>
               <span class="badge {getGradeBadge(percentage)}">{percentage}%</span>
             </div>
           </div>

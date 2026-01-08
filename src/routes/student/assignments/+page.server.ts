@@ -91,6 +91,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         testId: true,
         status: true,
         score: true,
+        bonusPoints: true,
         totalPoints: true,
         startedAt: true,
         submittedAt: true

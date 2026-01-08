@@ -269,6 +269,43 @@ export class ShuttleAIService {
     return JSON.parse(jsonStr);
   }
 
+  private detectProgrammingLanguage(question: string, topic: string): string {
+    const text = `${question} ${topic}`.toLowerCase();
+    
+    // Language detection patterns
+    const languagePatterns: [RegExp, string][] = [
+      [/\b(python|py)\b/i, 'python'],
+      [/\b(javascript|js|node\.?js)\b/i, 'javascript'],
+      [/\b(typescript|ts)\b/i, 'typescript'],
+      [/\b(java)\b(?!script)/i, 'java'],
+      [/\b(c\+\+|cpp)\b/i, 'cpp'],
+      [/\b(c#|csharp|c sharp)\b/i, 'csharp'],
+      [/\b(html)\b/i, 'html'],
+      [/\b(css)\b/i, 'css'],
+      [/\b(sql)\b/i, 'sql'],
+      [/\b(php)\b/i, 'php'],
+      [/\b(ruby|rb)\b/i, 'ruby'],
+      [/\b(go|golang)\b/i, 'go'],
+      [/\b(rust)\b/i, 'rust'],
+      [/\b(swift)\b/i, 'swift'],
+      [/\b(kotlin)\b/i, 'kotlin'],
+      [/\b(r\b|r programming)/i, 'r'],
+      [/\b(bash|shell|sh)\b/i, 'bash'],
+      [/\b(perl)\b/i, 'perl'],
+      [/\b(scala)\b/i, 'scala'],
+      [/\b(matlab)\b/i, 'matlab'],
+    ];
+    
+    for (const [pattern, lang] of languagePatterns) {
+      if (pattern.test(text)) {
+        return lang;
+      }
+    }
+    
+    // Default to python if no specific language detected
+    return 'python';
+  }
+
   async generateTestQuestions(
     params: {
       topic: string;
@@ -277,6 +314,13 @@ export class ShuttleAIService {
       difficulty: 'easy' | 'medium' | 'hard';
       additionalInstructions?: string;
       totalPoints?: number | null;
+      pointAllocation?: {
+        strategy: 'equal' | 'difficulty' | 'length' | 'type';
+        harderQuestionsMorePoints?: boolean;
+        longerQuestionsMorePoints?: boolean;
+        typeWeights?: Record<string, number>;
+        customInstructions?: string;
+      };
     },
     context?: AIContext
   ): Promise<
@@ -286,6 +330,7 @@ export class ShuttleAIService {
       options: string[] | null;
       correctAnswer: string;
       points: number;
+      programmingLanguage?: string | null;
     }>
   > {
     const systemPrompt = `You are an expert test creator. Generate high-quality test questions.
@@ -294,14 +339,58 @@ CRITICAL FORMATTING RULES:
 1. Return ONLY raw JSON - DO NOT wrap in markdown code blocks
 2. DO NOT include \`\`\`json or \`\`\` anywhere in your response
 3. Start your response directly with [ and end with ]
-4. No explanatory text before or after the JSON`;
+4. No explanatory text before or after the JSON
 
-    // Calculate point distribution if totalPoints is provided
+IMPORTANT: For programming/coding questions, you MUST:
+- Set type to "PROGRAMMING"
+- Set programmingLanguage to the appropriate language (e.g., "javascript", "python", "java", "c", "cpp", "csharp", "html", "css", "sql", "typescript", etc.)
+- Provide a clear question that asks students to write code
+- The correctAnswer should contain a sample solution or key elements to look for`;
+
+    // Build point allocation instructions
     let pointsInstruction = '- points: Point value 1-10 (number)';
     if (params.totalPoints && params.totalPoints > 0) {
       const avgPoints = Math.round(params.totalPoints / params.numberOfQuestions);
-      pointsInstruction = `- points: Distribute the total ${params.totalPoints} points across all questions. Harder questions (essay, long answer) should get more points. Total must equal ${params.totalPoints}. Average around ${avgPoints} points per question.`;
+      const strategy = params.pointAllocation?.strategy || 'difficulty';
+      
+      let allocationGuidance = '';
+      if (strategy === 'equal') {
+        allocationGuidance = `Distribute points equally (approximately ${avgPoints} points each).`;
+      } else if (strategy === 'difficulty') {
+        if (params.pointAllocation?.harderQuestionsMorePoints !== false) {
+          allocationGuidance = `Give MORE points to harder/complex questions (essay, long answer, programming get 1.5-2x more). Easier questions (multiple choice, true/false) get fewer points.`;
+        } else {
+          allocationGuidance = `Give MORE points to easier questions to encourage answering simpler ones. Harder questions get standard points.`;
+        }
+      } else if (strategy === 'length') {
+        if (params.pointAllocation?.longerQuestionsMorePoints !== false) {
+          allocationGuidance = `Give MORE points to questions requiring longer answers. Short answer questions get fewer points than essays.`;
+        } else {
+          allocationGuidance = `Give MORE points to questions with shorter expected answers. Concise answers should be rewarded more.`;
+        }
+      } else if (strategy === 'type' && params.pointAllocation?.typeWeights) {
+        const weights = params.pointAllocation.typeWeights;
+        const weightDescriptions = Object.entries(weights)
+          .filter(([, w]) => w !== 1)
+          .map(([t, w]) => `${t.replace('_', ' ')}: ${w}x`)
+          .join(', ');
+        allocationGuidance = `Apply type-based weights: ${weightDescriptions || 'equal weights'}.`;
+      }
+      
+      // Add custom instructions if provided
+      const customInstructions = params.pointAllocation?.customInstructions;
+      if (customInstructions) {
+        allocationGuidance += ` ADDITIONAL POINT ALLOCATION RULES: ${customInstructions}`;
+      }
+      
+      pointsInstruction = `- points: Distribute the total ${params.totalPoints} points across all questions. ${allocationGuidance} Total must equal exactly ${params.totalPoints}. Average around ${avgPoints} points per question.`;
     }
+
+    // Check if programming questions are included
+    const includesProgramming = params.questionTypes.includes('PROGRAMMING');
+    const programmingInstruction = includesProgramming 
+      ? `\n- programmingLanguage: For PROGRAMMING type questions, specify the programming language (e.g., "python", "javascript", "java", "c", "cpp", "sql", etc.). Set to null for non-programming questions.`
+      : '';
 
     const userPrompt = `Create EXACTLY ${params.numberOfQuestions} ${params.difficulty} difficulty test questions about: ${params.topic}
 
@@ -311,11 +400,17 @@ Question types to include: ${params.questionTypes.join(', ')}
 ${params.additionalInstructions ? `Additional instructions: ${params.additionalInstructions}` : ''}
 
 Return a JSON array with exactly ${params.numberOfQuestions} question objects. Each object has:
-- type: One of "MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "LONG_ANSWER", "ESSAY", "FILL_IN_BLANK"
-- question: The question text (string)
+- type: One of "MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "LONG_ANSWER", "ESSAY", "FILL_IN_BLANK", "PROGRAMMING"
+- question: The question text (string). For PROGRAMMING questions, clearly describe what code the student should write.
 - options: Array of 4 strings (for MULTIPLE_CHOICE) or ["True", "False"] (for TRUE_FALSE) or null for other types
-- correctAnswer: The correct answer (string)
+- correctAnswer: The correct answer (string). For PROGRAMMING questions, provide sample solution code or key elements to check for.${programmingInstruction}
 ${pointsInstruction}
+
+${includesProgramming ? `For PROGRAMMING questions:
+- Detect the appropriate programming language from the topic or context
+- Ask students to write functions, algorithms, or code snippets
+- The correctAnswer should contain working sample code
+- Common languages: python, javascript, java, c, cpp, csharp, html, css, sql, typescript, php, ruby, go, rust, swift, kotlin` : ''}
 
 CRITICAL: Return ONLY the JSON array with exactly ${params.numberOfQuestions} questions. No markdown formatting. No code blocks. Just pure JSON starting with [ and ending with ].`;
 
@@ -340,6 +435,7 @@ CRITICAL: Return ONLY the JSON array with exactly ${params.numberOfQuestions} qu
       options: string[] | null;
       correctAnswer: string;
       points: number;
+      programmingLanguage?: string | null;
     }>;
 
     // Ensure we return exactly the requested number of questions
@@ -349,7 +445,8 @@ CRITICAL: Return ONLY the JSON array with exactly ${params.numberOfQuestions} qu
     }
 
     // Normalize TRUE_FALSE questions to ensure correctAnswer matches options exactly
-    questions.forEach((q) => {
+    // and detect/normalize programming questions
+    questions.forEach((q: any) => {
       if (q.type === 'TRUE_FALSE') {
         // Ensure options are set correctly
         q.options = ['True', 'False'];
@@ -358,6 +455,19 @@ CRITICAL: Return ONLY the JSON array with exactly ${params.numberOfQuestions} qu
           q.correctAnswer = 'True';
         } else if (q.correctAnswer?.toLowerCase() === 'false') {
           q.correctAnswer = 'False';
+        }
+      }
+      
+      // Normalize PROGRAMMING questions
+      if (q.type === 'PROGRAMMING') {
+        // Ensure programmingLanguage is set
+        if (!q.programmingLanguage) {
+          // Try to detect from question or topic
+          q.programmingLanguage = this.detectProgrammingLanguage(q.question, params.topic);
+        }
+        // Normalize language to lowercase
+        if (q.programmingLanguage) {
+          q.programmingLanguage = q.programmingLanguage.toLowerCase();
         }
       }
     });
@@ -506,6 +616,24 @@ Student Answer: ${a.studentAnswer}`
     const systemPrompt = `You are an expert teacher grading a test. ${gradingStyle}
 
 ${partialCreditInstruction}
+
+SPECIAL INSTRUCTIONS FOR DIFFERENT QUESTION TYPES:
+
+**Programming/Code Questions:**
+- Focus on whether the logic and approach is correct, not just syntax
+- Award substantial partial credit for correct algorithms with minor syntax errors
+- Consider if the code would work with small fixes (typos, missing semicolons, etc.)
+- Evaluate: correctness, efficiency, code style, and edge case handling
+- Be lenient on language-specific syntax if the logic is sound
+
+**Math Questions:**
+- Award partial credit for correct methodology even if final answer is wrong
+- Check for computational errors vs conceptual errors
+- A correct approach with arithmetic mistake should get most of the points
+
+**Essay/Long Answer Questions:**
+- Evaluate: thesis clarity, supporting evidence, organization, and completeness
+- Award credit for demonstrating understanding even if not perfectly articulated
 
 For EACH question, provide specific, constructive feedback explaining:
 - What the student got right

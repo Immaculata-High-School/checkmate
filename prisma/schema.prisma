@@ -67,6 +67,7 @@ enum QuestionType {
   LONG_ANSWER
   ESSAY
   FILL_IN_BLANK
+  PROGRAMMING
 }
 
 enum SubmissionStatus {
@@ -153,6 +154,11 @@ model User {
   voucherRedemptions  VoucherRedemption[] @relation("VoucherRedemptions")
   featureRequests     FeatureRequest[] @relation("FeatureRequests")
   featureResponses    FeatureRequest[] @relation("FeatureResponses")
+  gradingQueue        GradingQueue[] @relation("StudentGradingQueue")
+  powerSchoolToken    PowerSchoolToken?
+  powerSchoolReleases PowerSchoolGradeRelease[]
+  powerSchoolMappings PowerSchoolStudentMapping[] @relation("PowerSchoolMappings")
+  powerSchoolMappingsCreated PowerSchoolStudentMapping[] @relation("PowerSchoolMappingsCreated")
 
   @@index([email])
   @@index([platformRole])
@@ -377,13 +383,15 @@ model Class {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  teacher      User              @relation(fields: [teacherId], references: [id])
-  organization Organization?     @relation(fields: [organizationId], references: [id])
-  subject      Subject?          @relation(fields: [subjectId], references: [id])
-  members      ClassMember[]
-  assignments  ClassAssignment[]
-  studySets    StudySet[]
-  tests        ClassTest[]
+  teacher              User                     @relation(fields: [teacherId], references: [id])
+  organization         Organization?            @relation(fields: [organizationId], references: [id])
+  subject              Subject?                 @relation(fields: [subjectId], references: [id])
+  members              ClassMember[]
+  assignments          ClassAssignment[]
+  studySets            StudySet[]
+  tests                ClassTest[]
+  powerSchoolMapping   PowerSchoolClassMapping?
+  powerSchoolStudentMappings PowerSchoolStudentMapping[]
 
   @@index([joinCode])
   @@index([teacherId])
@@ -404,6 +412,7 @@ model ClassMember {
   @@unique([classId, userId])
   @@index([classId])
   @@index([userId])
+  @@index([classId, role]) // For counting students per class
 }
 
 model ClassTest {
@@ -500,13 +509,15 @@ model Test {
   requireWebcam          Boolean    @default(false) // Require webcam (future feature)
   browserLockdown        Boolean    @default(false) // Strictest mode - all security on
 
-  teacher          User                   @relation(fields: [teacherId], references: [id])
-  questions        Question[]
-  submissions      TestSubmission[]
-  assignments      ClassAssignment[]
-  classes          ClassTest[]
-  studyGuides      StudyGuide[]
-  studentOverrides TestStudentOverride[]
+  teacher               User                      @relation(fields: [teacherId], references: [id])
+  questions             Question[]
+  submissions           TestSubmission[]
+  assignments           ClassAssignment[]
+  classes               ClassTest[]
+  studyGuides           StudyGuide[]
+  studentOverrides      TestStudentOverride[]
+  gradingQueue          GradingQueue[]
+  powerSchoolReleases   PowerSchoolGradeRelease[]
 
   @@index([accessCode])
   @@index([teacherId])
@@ -564,6 +575,7 @@ model TestSubmission {
   attemptNumber Int              @default(1) // Which attempt this is
   status        SubmissionStatus @default(IN_PROGRESS)
   score         Float?
+  bonusPoints   Float            @default(0) // Bonus points added by teacher
   totalPoints   Int?
   percentage    Float?
   feedback      String?          @db.Text
@@ -579,15 +591,20 @@ model TestSubmission {
   fullscreenExits  Int @default(0)
   violations       Json? // Detailed violation log with timestamps
 
-  test    Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
-  student User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  answers Answer[]
+  test                  Test                     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  student               User                     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  answers               Answer[]
+  gradingQueue          GradingQueue?
+  powerSchoolRelease    PowerSchoolGradeRelease?
 
   @@unique([testId, studentId, attemptNumber])
   @@index([testId])
   @@index([studentId])
   @@index([status])
   @@index([studentId, testId])
+  @@index([studentId, status]) // For student dashboard queries
+  @@index([testId, status]) // For teacher grading queries
+  @@index([submittedAt]) // For recent submissions sorting
 }
 
 model Answer {
@@ -957,4 +974,134 @@ model FeatureRequest {
   @@index([orgId])
   @@index([status])
   @@index([createdAt])
+}
+
+// ============================================================================
+// AI GRADING QUEUE
+// ============================================================================
+
+enum GradingQueueStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model GradingQueue {
+  id           String             @id @default(cuid())
+  submissionId String             @unique
+  testId       String
+  studentId    String
+  priority     Int                @default(0) // Higher = more priority
+  position     Int                @default(0)
+  status       GradingQueueStatus @default(QUEUED)
+  attempts     Int                @default(0)
+  error        String?
+  
+  createdAt    DateTime           @default(now())
+  startedAt    DateTime?
+  completedAt  DateTime?
+
+  submission   TestSubmission     @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  test         Test               @relation(fields: [testId], references: [id], onDelete: Cascade)
+  student      User               @relation("StudentGradingQueue", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([studentId])
+  @@index([createdAt])
+  @@index([status, createdAt])
+}
+
+// ============================================================================
+// POWERSCHOOL INTEGRATION
+// ============================================================================
+
+// Stores teacher's PowerSchool OAuth tokens
+model PowerSchoolToken {
+  id             String   @id @default(cuid())
+  userId         String
+  accessToken    String   @db.Text
+  refreshToken   String   @db.Text
+  tokenType      String   @default("Bearer")
+  expiresAt      DateTime
+  scope          String?
+  teacherName    String?  // Name from PowerSchool
+  teacherId      String?  // PowerSchool teacher ID
+  districtUrl    String?  // PowerSchool district URL
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId]) // One connection per teacher
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// Maps Checkmate classes to PowerSchool sections
+model PowerSchoolClassMapping {
+  id                 String   @id @default(cuid())
+  classId            String
+  sectionId          Int      // PowerSchool section ID
+  sectionName        String?  // Section name from PowerSchool
+  defaultCategoryId  Int?     // Default assignment category
+  defaultCategoryName String?
+  term               String?  // e.g., "Q1", "Q2", "S1"
+  yearId             Int?     // PowerSchool year ID
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  class              Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([classId]) // One mapping per class
+  @@index([classId])
+  @@index([sectionId])
+}
+
+// Tracks which grades have been released to PowerSchool
+model PowerSchoolGradeRelease {
+  id                String   @id @default(cuid())
+  submissionId      String
+  testId            String
+  studentEmail      String   // Email used to match student
+  psStudentId       Int?     // PowerSchool student ID
+  psAssignmentId    Int?     // PowerSchool assignment ID
+  sectionId         Int      // PowerSchool section ID
+  categoryId        Int?     // PowerSchool category ID
+  score             Float    // Score that was released
+  totalPoints       Int      // Total points for the assignment
+  releasedBy        String   // User ID of teacher who released
+  releasedAt        DateTime @default(now())
+  success           Boolean  @default(true)
+  error             String?  // Error message if failed
+
+  submission        TestSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  test              Test           @relation(fields: [testId], references: [id], onDelete: Cascade)
+  releasedByUser    User           @relation(fields: [releasedBy], references: [id])
+
+  @@unique([submissionId]) // One release per submission
+  @@index([submissionId])
+  @@index([testId])
+  @@index([releasedBy])
+  @@index([releasedAt])
+}
+
+// Manual mapping of Checkmate students to PowerSchool students
+model PowerSchoolStudentMapping {
+  id              String   @id @default(cuid())
+  classId         String   // Checkmate class ID
+  studentId       String   // Checkmate student user ID
+  psStudentId     Int      // PowerSchool student DCID
+  psStudentName   String?  // PowerSchool student name for reference
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String   // Teacher who created the mapping
+
+  class           Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student         User     @relation("PowerSchoolMappings", fields: [studentId], references: [id], onDelete: Cascade)
+  createdByUser   User     @relation("PowerSchoolMappingsCreated", fields: [createdBy], references: [id])
+
+  @@unique([classId, studentId]) // One mapping per student per class
+  @@index([classId])
+  @@index([studentId])
 }

@@ -1,9 +1,9 @@
 import { prisma } from './db';
 import { shuttleAI, type AIContext } from './shuttleai';
 
-// Global rate limit configuration
+// Global rate limit configuration - SYSTEM-WIDE AI LIMIT
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute window
-const MAX_REQUESTS_PER_WINDOW = 30; // 30 requests per minute for entire app
+const MAX_REQUESTS_PER_WINDOW = 15; // 15 requests per minute for entire app (system-wide limit)
 
 // In-memory rate limiting (shared across all requests in this process)
 interface RateLimitState {
@@ -101,13 +101,13 @@ export async function getQueueStatus(submissionId: string): Promise<{
       }
     });
 
-    // Estimate wait time: ~2 seconds per request, limited by rate (30/min = 0.5/sec)
+    // Estimate wait time: ~4 seconds per request at 15/min rate limit
     // Plus any items currently processing
     const processingCount = await prisma.gradingQueue.count({
       where: { status: 'PROCESSING' }
     });
 
-    const estimatedWaitSeconds = Math.ceil((itemsAhead + processingCount + 1) * 2);
+    const estimatedWaitSeconds = Math.ceil((itemsAhead + processingCount + 1) * 4);
 
     return {
       status: 'queued',
@@ -170,7 +170,7 @@ export async function getStudentQueueInfo(studentId: string): Promise<{
         testId: item.testId,
         position: item.status === 'PROCESSING' ? 0 : itemsAhead + 1,
         status: item.status,
-        estimatedWaitSeconds: Math.ceil((itemsAhead + 1) * 2)
+        estimatedWaitSeconds: Math.ceil((itemsAhead + 1) * 4)
       };
     })
   );
@@ -230,7 +230,7 @@ export async function queueGrading(params: {
   return {
     queued: true,
     position: queueSize + 1,
-    estimatedWaitSeconds: Math.ceil((queueSize + 1) * 2)
+    estimatedWaitSeconds: Math.ceil((queueSize + 1) * 4)
   };
 }
 

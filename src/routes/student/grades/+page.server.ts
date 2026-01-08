@@ -20,9 +20,9 @@ export const load: PageServerLoad = async ({ locals }) => {
   });
 
   // Calculate overall stats
-  const totalScore = submissions.reduce((sum, s) => sum + (s.score || 0), 0);
+  const totalScore = submissions.reduce((sum, s) => sum + (s.score || 0) + (s.bonusPoints || 0), 0);
   const totalPoints = submissions.reduce((sum, s) => sum + (s.totalPoints || 0), 0);
-  const overallPercentage = totalPoints > 0 ? Math.round((totalScore / totalPoints) * 100) : null;
+  const overallPercentage = totalPoints > 0 ? Math.round(Math.min(100, (totalScore / totalPoints) * 100)) : null;
 
   return {
     submissions,

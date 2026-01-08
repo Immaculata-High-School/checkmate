@@ -83,7 +83,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     };
   });
 
-  const percentage = submission.totalPoints ? Math.round((submission.score! / submission.totalPoints) * 100) : 0;
+  const totalScore = (submission.score || 0) + (submission.bonusPoints || 0);
+  const percentage = submission.totalPoints ? Math.round(Math.min(100, (totalScore / submission.totalPoints) * 100)) : 0;
 
   return {
     test: {
@@ -97,6 +98,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     submission: {
       status: submission.status,
       score: submission.score,
+      bonusPoints: submission.bonusPoints,
       totalPoints: submission.totalPoints,
       percentage,
       feedback: submission.feedback,

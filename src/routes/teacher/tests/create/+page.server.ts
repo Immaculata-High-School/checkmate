@@ -41,6 +41,12 @@ export const actions: Actions = {
     const additionalInstructions = formData.get('additionalInstructions')?.toString();
     const totalPointsStr = formData.get('totalPoints')?.toString();
     const totalPoints = totalPointsStr ? parseInt(totalPointsStr) : null;
+    
+    // Point allocation options
+    const pointAllocationStrategy = formData.get('pointAllocationStrategy')?.toString() as 'equal' | 'difficulty' | 'length' | 'type' || 'difficulty';
+    const harderQuestionsMorePoints = formData.get('harderQuestionsMorePoints') !== 'false';
+    const longerQuestionsMorePoints = formData.get('longerQuestionsMorePoints') !== 'false';
+    const pointAllocationInstructions = formData.get('pointAllocationInstructions')?.toString();
 
     if (!topic) {
       return fail(400, { error: 'Topic is required' });
@@ -60,7 +66,7 @@ export const actions: Actions = {
       data: {
         type: 'TEST_GENERATION',
         status: 'RUNNING',
-        input: { topic, numberOfQuestions, difficulty, questionTypes, additionalInstructions, totalPoints },
+        input: { topic, numberOfQuestions, difficulty, questionTypes, additionalInstructions, totalPoints, pointAllocationStrategy },
         userId: locals.user!.id,
         orgId: membership?.organizationId,
         startedAt: new Date()
@@ -75,7 +81,13 @@ export const actions: Actions = {
           questionTypes,
           difficulty: difficulty || 'medium',
           additionalInstructions,
-          totalPoints
+          totalPoints,
+          pointAllocation: totalPoints ? {
+            strategy: pointAllocationStrategy,
+            harderQuestionsMorePoints,
+            longerQuestionsMorePoints,
+            customInstructions: pointAllocationInstructions
+          } : undefined
         },
         { userId: locals.user!.id, orgId: membership?.organizationId }
       );
@@ -173,7 +185,7 @@ export const actions: Actions = {
           create: questions.map((q: any, i: number) => ({
             type: q.type,
             question: q.question,
-            options: q.options,
+            options: q.type === 'PROGRAMMING' ? { programmingLanguage: q.programmingLanguage || 'python' } : q.options,
             correctAnswer: q.correctAnswer,
             points: q.points || 1,
             order: i,
@@ -252,7 +264,7 @@ export const actions: Actions = {
           create: questions.map((q: any, i: number) => ({
             type: q.type,
             question: q.question,
-            options: q.options || [],
+            options: q.type === 'PROGRAMMING' ? { programmingLanguage: q.programmingLanguage || 'python' } : (q.options || []),
             correctAnswer: q.correctAnswer,
             points: q.points || 1,
             order: i,

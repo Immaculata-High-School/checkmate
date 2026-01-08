@@ -1,71 +1,87 @@
 import { prisma } from '$lib/server/db';
+import { cache } from '$lib/server/cache';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const userId = locals.user!.id;
 
-  // Get student's classes
-  const classMemberships = await prisma.classMember.findMany({
-    where: { userId },
-    include: {
-      class: true
-    }
-  });
+  // Run all queries in parallel for better performance
+  const [classMemberships, recentSubmissions, stats] = await Promise.all([
+    // Get student's classes
+    prisma.classMember.findMany({
+      where: { userId },
+      select: {
+        classId: true,
+        class: {
+          select: { id: true, name: true, emoji: true }
+        }
+      }
+    }),
+    
+    // Get recent test submissions with minimal data
+    prisma.testSubmission.findMany({
+      where: { studentId: userId },
+      take: 5,
+      orderBy: { startedAt: 'desc' },
+      select: {
+        id: true,
+        status: true,
+        score: true,
+        bonusPoints: true,
+        totalPoints: true,
+        startedAt: true,
+        submittedAt: true,
+        test: { select: { title: true, accessCode: true } }
+      }
+    }),
+
+    // Get aggregated stats in a single query
+    prisma.$queryRaw<[{ total_tests: bigint; avg_score: number | null }]>`
+      SELECT 
+        COUNT(*) FILTER (WHERE status = 'GRADED') as total_tests,
+        AVG(CASE WHEN status = 'GRADED' AND score IS NOT NULL AND "totalPoints" > 0 
+            THEN LEAST((score::float + COALESCE("bonusPoints"::float, 0)) / "totalPoints"::float * 100, 100)
+            ELSE NULL END) as avg_score
+      FROM "TestSubmission"
+      WHERE "studentId" = ${userId}
+    `
+  ]);
 
   const classIds = classMemberships.map((m) => m.classId);
 
-  // Get recent test submissions
-  const recentSubmissions = await prisma.testSubmission.findMany({
-    where: { studentId: userId },
-    take: 5,
-    orderBy: { startedAt: 'desc' },
-    include: {
-      test: { select: { title: true, accessCode: true } }
-    }
-  });
+  // Get upcoming assignments only if user has classes
+  const upcomingAssignments = classIds.length > 0 
+    ? await prisma.classAssignment.findMany({
+        where: {
+          classId: { in: classIds },
+          OR: [{ dueDate: { gte: new Date() } }, { dueDate: null }]
+        },
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          dueDate: true,
+          test: { select: { id: true, title: true, accessCode: true, status: true } },
+          studySet: { select: { id: true, title: true } },
+          class: { select: { name: true, emoji: true } }
+        },
+        orderBy: { dueDate: 'asc' },
+        take: 5
+      })
+    : [];
 
-  // Get upcoming assignments
-  const upcomingAssignments = await prisma.classAssignment.findMany({
-    where: {
-      classId: { in: classIds },
-      OR: [{ dueDate: { gte: new Date() } }, { dueDate: null }]
-    },
-    include: {
-      test: true,
-      studySet: true,
-      class: { select: { name: true, emoji: true } }
-    },
-    orderBy: { dueDate: 'asc' },
-    take: 5
-  });
-
-  // Calculate stats
-  const totalTests = await prisma.testSubmission.count({
-    where: { studentId: userId, status: 'GRADED' }
-  });
-
-  const gradedSubmissions = await prisma.testSubmission.findMany({
-    where: { studentId: userId, status: 'GRADED', score: { not: null }, totalPoints: { not: null } }
-  });
-
-  let averageScore = 0;
-  if (gradedSubmissions.length > 0) {
-    const totalPercentage = gradedSubmissions.reduce((sum, s) => {
-      return sum + ((s.score || 0) / (s.totalPoints || 1)) * 100;
-    }, 0);
-    averageScore = Math.round(totalPercentage / gradedSubmissions.length);
-  }
-
-  // Study sets progress
+  // Get study progress count
   const studyProgress = await prisma.studyProgress.count({
     where: { userId }
   });
 
+  const statsResult = stats[0];
+
   return {
     stats: {
       totalClasses: classMemberships.length,
-      totalTests,
-      averageScore,
+      totalTests: Number(statsResult?.total_tests || 0),
+      averageScore: Math.round(statsResult?.avg_score || 0),
       studySets: studyProgress
     },
     recentSubmissions,

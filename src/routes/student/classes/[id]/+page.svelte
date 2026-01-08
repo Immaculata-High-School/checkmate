@@ -61,9 +61,10 @@
             <div class="flex items-center gap-3">
               {#if test.submission}
                 {#if test.submission.status === 'GRADED'}
+                  {@const totalScore = (test.submission.score || 0) + (test.submission.bonusPoints || 0)}
                   <span class="badge badge-green flex items-center gap-1">
                     <CheckCircle class="w-3 h-3" />
-                    {Math.round((test.submission.score || 0) / (test.submission.totalPoints || 1) * 100)}%
+                    {Math.round(Math.min(100, totalScore / (test.submission.totalPoints || 1) * 100))}%
                   </span>
                 {:else if test.submission.status === 'SUBMITTED'}
                   <span class="badge badge-yellow">Pending Grade</span>

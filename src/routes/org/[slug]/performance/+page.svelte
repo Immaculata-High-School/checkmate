@@ -203,8 +203,9 @@
                       {submission.status}
                     </span>
                     {#if submission.status === 'GRADED' && submission.score !== null}
+                      {@const totalScore = (submission.score || 0) + (submission.bonusPoints || 0)}
                       <p class="text-xs text-gray-500 mt-1">
-                        {submission.score}/{submission.totalPoints}
+                        {totalScore}/{submission.totalPoints}{submission.bonusPoints ? ` (+${submission.bonusPoints})` : ''}
                       </p>
                     {/if}
                   </div>

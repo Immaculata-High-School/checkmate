@@ -1,5 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
+  import { invalidateAll } from '$app/navigation';
+  import { onMount, onDestroy } from 'svelte';
   import {
     ArrowLeft,
     CheckCircle,
@@ -12,14 +14,42 @@
     Target,
     MessageSquare,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    Loader2
   } from 'lucide-svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
 
   const aiGraded = $derived($page.url.searchParams.get('aiGraded') === 'true');
+  const isQueued = $derived($page.url.searchParams.get('queued') === 'true');
+  const queuePosition = $derived(parseInt($page.url.searchParams.get('position') || '0'));
+  
   let expandedQuestions = $state<Set<number>>(new Set());
+  let pollingInterval: NodeJS.Timeout | null = null;
+
+  // Poll for updates if submission is pending/queued
+  onMount(() => {
+    if (data.submission.status === 'PENDING' || isQueued) {
+      pollingInterval = setInterval(() => {
+        invalidateAll();
+      }, 5000); // Check every 5 seconds
+    }
+  });
+
+  onDestroy(() => {
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+    }
+  });
+
+  // Stop polling when graded
+  $effect(() => {
+    if (data.submission.status === 'GRADED' && pollingInterval) {
+      clearInterval(pollingInterval);
+      pollingInterval = null;
+    }
+  });
 
   function toggleQuestion(index: number) {
     const newSet = new Set(expandedQuestions);
@@ -89,7 +119,8 @@
       SHORT_ANSWER: 'Short Answer',
       LONG_ANSWER: 'Long Answer',
       ESSAY: 'Essay',
-      FILL_IN_BLANK: 'Fill in the Blank'
+      FILL_IN_BLANK: 'Fill in the Blank',
+      PROGRAMMING: 'Programming'
     };
     return labels[type] || type.replace('_', ' ');
   }
@@ -144,7 +175,7 @@
                 <div class="flex items-center gap-2 px-4 py-2 rounded-full {getGradeBg(data.submission.percentage)} border">
                   <Target class="w-4 h-4 {getGradeTextColor(data.submission.percentage)}" />
                   <span class="font-semibold {getGradeTextColor(data.submission.percentage)}">
-                    {data.submission.score}/{data.submission.totalPoints} points
+                    {(data.submission.score || 0) + (data.submission.bonusPoints || 0)}/{data.submission.totalPoints} points{data.submission.bonusPoints ? ` (+${data.submission.bonusPoints} bonus)` : ''}
                   </span>
                 </div>
                 {#if data.retakeInfo.maxAttempts !== 1}
@@ -198,16 +229,35 @@
 
       {:else if data.submission.status === 'PENDING'}
         <div class="p-12 text-center">
-          <div class="w-24 h-24 mx-auto mb-6 rounded-full bg-amber-100 flex items-center justify-center">
-            <Clock class="w-12 h-12 text-amber-600" />
-          </div>
-          <h1 class="text-2xl font-bold text-gray-900 mb-2">{data.test.title}</h1>
-          <p class="text-gray-500 mb-4">by {data.test.teacher.name}</p>
-          <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-50 border border-amber-200 text-amber-700 font-medium">
-            <Clock class="w-4 h-4" />
-            Pending Review
-          </div>
-          <p class="text-gray-500 mt-6">Your submission is waiting to be graded by your teacher.</p>
+          {#if isQueued}
+            <!-- Queued for AI Grading -->
+            <div class="w-24 h-24 mx-auto mb-6 rounded-full bg-indigo-100 flex items-center justify-center">
+              <Loader2 class="w-12 h-12 text-indigo-600 animate-spin" />
+            </div>
+            <h1 class="text-2xl font-bold text-gray-900 mb-2">{data.test.title}</h1>
+            <p class="text-gray-500 mb-4">by {data.test.teacher.name}</p>
+            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 font-medium">
+              <Sparkles class="w-4 h-4" />
+              Grading in Progress
+            </div>
+            <p class="text-gray-600 mt-6">Your test is being graded by AI.</p>
+            {#if queuePosition > 0}
+              <p class="text-sm text-gray-500 mt-2">Queue position: {queuePosition}</p>
+            {/if}
+            <p class="text-sm text-gray-400 mt-2">This page will automatically update when grading is complete.</p>
+          {:else}
+            <!-- Pending Manual Review -->
+            <div class="w-24 h-24 mx-auto mb-6 rounded-full bg-amber-100 flex items-center justify-center">
+              <Clock class="w-12 h-12 text-amber-600" />
+            </div>
+            <h1 class="text-2xl font-bold text-gray-900 mb-2">{data.test.title}</h1>
+            <p class="text-gray-500 mb-4">by {data.test.teacher.name}</p>
+            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-50 border border-amber-200 text-amber-700 font-medium">
+              <Clock class="w-4 h-4" />
+              Pending Review
+            </div>
+            <p class="text-gray-500 mt-6">Your submission is waiting to be graded by your teacher.</p>
+          {/if}
           <p class="text-sm text-gray-400 mt-2">Submitted {formatDate(data.submission.submittedAt)}</p>
         </div>
 
@@ -355,16 +405,24 @@
                     <div class="text-sm font-medium {question.isCorrect ? 'text-emerald-700' : question.isCorrect === false ? 'text-red-700' : 'text-gray-700'} mb-1">
                       Your Answer
                     </div>
-                    <div class="text-gray-900">
-                      {question.studentAnswer || 'No answer provided'}
-                    </div>
+                    {#if question.type === 'PROGRAMMING'}
+                      <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto font-mono text-sm whitespace-pre-wrap"><code>{question.studentAnswer || 'No answer provided'}</code></pre>
+                    {:else}
+                      <div class="text-gray-900">
+                        {question.studentAnswer || 'No answer provided'}
+                      </div>
+                    {/if}
                   </div>
 
                   <!-- Correct Answer (if wrong and allowed to show) -->
                   {#if question.correctAnswer && !question.isCorrect}
                     <div class="p-4 rounded-xl bg-emerald-50 border border-emerald-100">
                       <div class="text-sm font-medium text-emerald-700 mb-1">Correct Answer</div>
-                      <div class="text-emerald-900">{question.correctAnswer}</div>
+                      {#if question.type === 'PROGRAMMING'}
+                        <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto font-mono text-sm whitespace-pre-wrap"><code>{question.correctAnswer}</code></pre>
+                      {:else}
+                        <div class="text-emerald-900">{question.correctAnswer}</div>
+                      {/if}
                     </div>
                   {/if}
 

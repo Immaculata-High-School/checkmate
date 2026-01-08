@@ -32,7 +32,25 @@
     { value: 'TRUE_FALSE', label: 'True/False' },
     { value: 'SHORT_ANSWER', label: 'Short Answer' },
     { value: 'FILL_IN_BLANK', label: 'Fill in the Blank' },
-    { value: 'ESSAY', label: 'Essay' }
+    { value: 'ESSAY', label: 'Essay' },
+    { value: 'LONG_ANSWER', label: 'Long Answer' },
+    { value: 'PROGRAMMING', label: 'Programming' }
+  ];
+
+  const programmingLanguages = [
+    { value: 'python', label: 'Python' },
+    { value: 'javascript', label: 'JavaScript' },
+    { value: 'typescript', label: 'TypeScript' },
+    { value: 'java', label: 'Java' },
+    { value: 'cpp', label: 'C++' },
+    { value: 'c', label: 'C' },
+    { value: 'csharp', label: 'C#' },
+    { value: 'html', label: 'HTML' },
+    { value: 'css', label: 'CSS' },
+    { value: 'sql', label: 'SQL' },
+    { value: 'php', label: 'PHP' },
+    { value: 'ruby', label: 'Ruby' },
+    { value: 'go', label: 'Go' }
   ];
 
   function addQuestion() {
@@ -44,7 +62,8 @@
         options: ['', '', '', ''],
         correctAnswer: '',
         points: 1,
-        aiGenerated: false
+        aiGenerated: false,
+        programmingLanguage: 'python'
       }
     ];
   }
@@ -254,6 +273,33 @@
                         />
                         False
                       </label>
+                    </div>
+                  </div>
+                {:else if question.type === 'PROGRAMMING'}
+                  <div class="space-y-3">
+                    <div>
+                      <label class="label">Programming Language</label>
+                      <select 
+                        value={(question.options as any)?.programmingLanguage || 'python'}
+                        onchange={(e) => {
+                          question.options = { programmingLanguage: e.currentTarget.value };
+                          questions = [...questions];
+                        }}
+                        class="input"
+                      >
+                        {#each programmingLanguages as lang}
+                          <option value={lang.value}>{lang.label}</option>
+                        {/each}
+                      </select>
+                    </div>
+                    <div>
+                      <label class="label">Sample Solution / Key Elements</label>
+                      <textarea
+                        bind:value={question.correctAnswer}
+                        rows="6"
+                        class="input font-mono text-sm"
+                        placeholder="Enter sample solution code or key elements..."
+                      ></textarea>
                     </div>
                   </div>
                 {:else}

@@ -18,7 +18,15 @@
     TrendingUp,
     TrendingDown,
     MessageSquare,
-    Trash2
+    Trash2,
+    Gift,
+    Plus,
+    Minus,
+    School,
+    Upload,
+    ExternalLink,
+    Link,
+    Save
   } from 'lucide-svelte';
   import type { PageData, ActionData } from './$types';
 
@@ -32,9 +40,51 @@
   let showDeleteConfirm = $state<any>(null);
   let showBulkDeleteConfirm = $state(false);
   let showClassFeedback = $state(false);
+  let showBonusModal = $state(false);
+  let showPowerSchoolModal = $state(false);
+  let showMappingModal = $state(false);
+  let showPsJobStartedModal = $state(false);
+  let psReleasing = $state(false);
+  let savingMappings = $state(false);
+  let bonusAmount = $state(0);
+  let bonusTarget = $state<'selected' | 'all' | 'single'>('selected');
+  let bonusSubmissionId = $state<string | null>(null);
   let statusFilter = $state(data.filters.status);
   let searchQuery = $state(data.filters.search);
   let selectedSubmissions = $state<Set<string>>(new Set());
+  
+  // PowerSchool release form state
+  let psSelectedClass = $state('');
+  let psAssignmentName = $state(data.test.title);
+  let psSelectedCategory = $state('');
+  let psDueDate = $state(new Date().toISOString().split('T')[0]);
+  let psForceRerelease = $state(false);
+  let psMarkMissing = $state(false);
+  
+  // Student mapping state
+  let unmatchedStudents = $state<Array<{studentId: string; studentName: string; studentEmail: string}>>([]);
+  let psStudentsList = $state<Array<{id: number; name: string; first_name: string; last_name: string}>>([]);
+  let studentMappings = $state<Record<string, number>>({});
+  let mappingClassId = $state('');
+
+  // PowerSchool stats - computed from submissions
+  let psGradedCount = $derived(
+    data.submissions.filter((s: any) => s.status === 'GRADED' && !(s as any).powerSchoolRelease?.success).length
+  );
+  let psAlreadyReleased = $derived(
+    data.submissions.filter((s: any) => (s as any).powerSchoolRelease?.success).length
+  );
+  
+  // Check if form returned unmatched students
+  $effect(() => {
+    if ((form as any)?.unmatchedStudents?.length > 0 && (form as any)?.psStudents?.length > 0) {
+      unmatchedStudents = (form as any).unmatchedStudents;
+      psStudentsList = (form as any).psStudents;
+      mappingClassId = (form as any).classId || '';
+      studentMappings = {};
+      showMappingModal = true;
+    }
+  });
 
   function applyFilters() {
     const params = new URLSearchParams();
@@ -47,6 +97,13 @@
     if (e.key === 'Enter') {
       applyFilters();
     }
+  }
+
+  function openBonusModal(target: 'selected' | 'all' | 'single', submissionId?: string) {
+    bonusTarget = target;
+    bonusSubmissionId = submissionId || null;
+    bonusAmount = 0;
+    showBonusModal = true;
   }
 
   function getStatusBadge(status: string) {
@@ -71,7 +128,13 @@
 
   function formatScore(submission: any) {
     if (submission.status !== 'GRADED') return '-';
-    const percentage = Math.round((submission.score / submission.totalPoints) * 100);
+    const bonus = submission.bonusPoints || 0;
+    // Cap final score at totalPoints (100%)
+    const finalScore = Math.min(submission.totalPoints, submission.score + bonus);
+    const percentage = Math.round((finalScore / submission.totalPoints) * 100);
+    if (bonus > 0) {
+      return `${finalScore}/${submission.totalPoints} (${percentage}%) +${bonus}`;
+    }
     return `${submission.score}/${submission.totalPoints} (${percentage}%)`;
   }
 
@@ -103,19 +166,23 @@
 
   async function downloadReport() {
     // Simple CSV export
-    const headers = ['Student', 'Email', 'Status', 'Score', 'Total Points', 'Percentage', 'Submitted At', 'Graded At'];
+    const headers = ['Student', 'Email', 'Status', 'Score', 'Bonus', 'Total Points', 'Percentage', 'Submitted At', 'Graded At'];
     const rows = data.submissions
       .filter(s => selectedSubmissions.size === 0 || selectedSubmissions.has(s.id))
-      .map(s => [
-        s.student.name || '',
-        s.student.email,
-        s.status,
-        s.score?.toString() || '',
-        s.totalPoints?.toString() || '',
-        s.totalPoints ? Math.round((s.score || 0) / s.totalPoints * 100).toString() + '%' : '',
-        s.submittedAt ? new Date(s.submittedAt).toISOString() : '',
-        s.gradedAt ? new Date(s.gradedAt).toISOString() : ''
-      ]);
+      .map(s => {
+        const totalScore = (s.score || 0) + (s.bonusPoints || 0);
+        return [
+          s.student.name || '',
+          s.student.email,
+          s.status,
+          s.score?.toString() || '',
+          s.bonusPoints?.toString() || '0',
+          s.totalPoints?.toString() || '',
+          s.totalPoints ? Math.round(Math.min(100, totalScore / s.totalPoints * 100)).toString() + '%' : '',
+          s.submittedAt ? new Date(s.submittedAt).toISOString() : '',
+          s.gradedAt ? new Date(s.gradedAt).toISOString() : ''
+        ];
+      });
 
     const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -168,6 +235,33 @@
           </form>
         {/if}
 
+        {#if data.stats.graded > 0}
+          <button onclick={() => openBonusModal('all')} class="btn btn-secondary">
+            <Gift class="w-4 h-4" />
+            Bonus Points
+          </button>
+        {/if}
+
+        <!-- PowerSchool Button - Always visible -->
+        {#if (data as any).powerSchool?.configured}
+          {#if !(data as any).powerSchool?.connected}
+            <a href="/teacher/settings" class="btn btn-secondary bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100">
+              <School class="w-4 h-4" />
+              Connect PowerSchool
+            </a>
+          {:else if (data as any).powerSchool.linkedClasses.length === 0}
+            <a href="/teacher/settings" class="btn btn-secondary bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100">
+              <School class="w-4 h-4" />
+              Link Classes
+            </a>
+          {:else}
+            <button onclick={() => (showPowerSchoolModal = true)} class="btn btn-secondary bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100" disabled={data.stats.graded === 0}>
+              <School class="w-4 h-4" />
+              Release to PowerSchool
+            </button>
+          {/if}
+        {/if}
+
         <form method="POST" action="?/generateClassFeedback" use:enhance={() => {
           generatingFeedback = true;
           return async ({ result, update }) => {
@@ -196,6 +290,20 @@
     </div>
   </div>
 
+  {#if form?.bonusSuccess}
+    <div class="alert alert-success mb-6">
+      <CheckCircle class="w-5 h-5" />
+      {form.message || 'Bonus points added successfully!'}
+    </div>
+  {/if}
+
+  {#if (form as any)?.mappingSaved}
+    <div class="alert alert-success mb-6">
+      <CheckCircle class="w-5 h-5" />
+      {form?.message || 'Student mappings saved! You can now retry releasing grades.'}
+    </div>
+  {/if}
+
   {#if form?.aiSuccess}
     <div class="alert alert-success mb-6">
       <CheckCircle class="w-5 h-5" />
@@ -210,10 +318,51 @@
     </div>
   {/if}
 
+  {#if (form as any)?.psSuccess}
+    <div class="alert alert-success mb-6">
+      <School class="w-5 h-5" />
+      {form?.message || 'Grades released to PowerSchool successfully!'}
+    </div>
+  {/if}
+
+  {#if (form as any)?.psPartial}
+    <div class="alert alert-warning mb-6">
+      <AlertCircle class="w-5 h-5 flex-shrink-0" />
+      <div class="flex-1">
+        <p class="font-medium">{form?.message}</p>
+        {#if (form as any).errors?.length}
+          <details class="mt-2" open={form?.errors?.length <= 5}>
+            <summary class="text-sm cursor-pointer hover:underline">
+              {(form as any).errors.length} student{(form as any).errors.length !== 1 ? 's' : ''} couldn't be matched
+            </summary>
+            <ul class="text-sm mt-1 list-disc list-inside max-h-40 overflow-y-auto">
+              {#each (form as any).errors as err}
+                <li>{err}</li>
+              {/each}
+            </ul>
+          </details>
+        {/if}
+      </div>
+    </div>
+  {/if}
   {#if form?.error}
     <div class="alert alert-error mb-6">
-      <AlertCircle class="w-5 h-5" />
-      {form.error}
+      <AlertCircle class="w-5 h-5 flex-shrink-0" />
+      <div class="flex-1">
+        <p class="font-medium">{form.error}</p>
+        {#if (form as any).errors?.length > 1}
+          <details class="mt-2">
+            <summary class="text-sm cursor-pointer hover:underline">
+              Show {(form as any).errors.length - 1} more error{(form as any).errors.length - 1 !== 1 ? 's' : ''}
+            </summary>
+            <ul class="text-sm mt-1 list-disc list-inside max-h-40 overflow-y-auto">
+              {#each (form as any).errors.slice(1) as err}
+                <li>{err}</li>
+              {/each}
+            </ul>
+          </details>
+        {/if}
+      </div>
     </div>
   {/if}
 
@@ -242,7 +391,7 @@
   {/if}
 
   <!-- Stats Cards -->
-  <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+  <div class="grid grid-cols-2 lg:grid-cols-{(data as any).powerSchool?.connected ? '6' : '5'} gap-4 mb-6">
     <div class="stat-card">
       <div class="stat-value">{data.stats.total}</div>
       <div class="stat-label">Total</div>
@@ -265,6 +414,15 @@
       </div>
       <div class="stat-label">Average</div>
     </div>
+    {#if (data as any).powerSchool?.connected}
+      <div class="stat-card">
+        <div class="stat-value text-blue-600 flex items-center justify-center gap-1">
+          <School class="w-5 h-5" />
+          {(data.stats as any).releasedToPowerSchool}
+        </div>
+        <div class="stat-label">Released to PS</div>
+      </div>
+    {/if}
   </div>
 
   <!-- Filters -->
@@ -358,7 +516,14 @@
               {formatScore(submission)}
             </td>
             <td class="px-4 py-4 text-center">
-              <span class="badge {status.class}">{status.text}</span>
+              <div class="flex items-center justify-center gap-1">
+                <span class="badge {status.class}">{status.text}</span>
+                {#if (submission as any).powerSchoolRelease?.success}
+                  <span title="Released to PowerSchool" class="text-blue-500">
+                    <School class="w-4 h-4" />
+                  </span>
+                {/if}
+              </div>
             </td>
             <td class="px-4 py-4 text-right">
               <div class="flex items-center justify-end gap-2">
@@ -718,6 +883,448 @@
             </button>
           </form>
         </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Bonus Points Modal -->
+{#if showBonusModal}
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-md w-full">
+      <div class="p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold text-gray-900">Add Bonus Points</h3>
+          <button onclick={() => (showBonusModal = false)} class="text-gray-400 hover:text-gray-600">
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+        
+        <p class="text-gray-500 text-sm mb-4">
+          {#if bonusTarget === 'all'}
+            Add bonus points to all {data.stats.graded} graded submissions.
+          {:else if bonusTarget === 'selected'}
+            Add bonus points to {selectedSubmissions.size} selected submission{selectedSubmissions.size !== 1 ? 's' : ''}.
+          {:else}
+            Add bonus points to this submission.
+          {/if}
+          Points are capped at the maximum test score (100%).
+        </p>
+
+        <form method="POST" action="?/addBonusPoints" use:enhance={() => {
+          return async ({ update }) => {
+            showBonusModal = false;
+            bonusAmount = 0;
+            await update();
+            await invalidateAll();
+          };
+        }}>
+          <input type="hidden" name="target" value={bonusTarget} />
+          {#if bonusSubmissionId}
+            <input type="hidden" name="submissionId" value={bonusSubmissionId} />
+          {/if}
+          {#if bonusTarget === 'selected'}
+            {#each [...selectedSubmissions] as id}
+              <input type="hidden" name="submissionIds" value={id} />
+            {/each}
+          {/if}
+
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Bonus Points</label>
+            <div class="flex items-center gap-2">
+              <button 
+                type="button" 
+                onclick={() => bonusAmount = Math.max(-10, bonusAmount - 1)}
+                class="btn btn-secondary p-2"
+              >
+                <Minus class="w-4 h-4" />
+              </button>
+              <input 
+                type="number" 
+                name="bonusAmount" 
+                bind:value={bonusAmount}
+                class="input text-center flex-1"
+                step="0.5"
+                min="-100"
+                max="100"
+              />
+              <button 
+                type="button" 
+                onclick={() => bonusAmount = Math.min(10, bonusAmount + 1)}
+                class="btn btn-secondary p-2"
+              >
+                <Plus class="w-4 h-4" />
+              </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-1">Use negative values to remove bonus points</p>
+          </div>
+
+          <div class="flex gap-3">
+            <button type="button" onclick={() => (showBonusModal = false)} class="btn btn-secondary flex-1">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary flex-1">
+              <Gift class="w-4 h-4" />
+              Apply Bonus
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- PowerSchool Release Modal -->
+{#if showPowerSchoolModal}
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+            <School class="w-5 h-5 text-blue-600" />
+          </div>
+          <div>
+            <h3 class="font-semibold text-gray-900">Release to PowerSchool</h3>
+            <p class="text-sm text-gray-500">Push graded scores to your gradebook</p>
+          </div>
+        </div>
+        <button onclick={() => (showPowerSchoolModal = false)} class="text-gray-400 hover:text-gray-600">
+          <X class="w-5 h-5" />
+        </button>
+      </div>
+
+      {#if psAlreadyReleased > 0}
+        <div class="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+          <CheckCircle class="w-4 h-4 inline mr-1" />
+          {psAlreadyReleased} grade{psAlreadyReleased !== 1 ? 's' : ''} already released to PowerSchool
+        </div>
+      {/if}
+
+      <form method="POST" action="?/releaseToPowerSchool" use:enhance={() => {
+        psReleasing = true;
+        return async ({ result, update }) => {
+          psReleasing = false;
+          showPowerSchoolModal = false;
+          
+          // Check if job was started - show the success modal
+          if (result.type === 'success' && result.data?.psJobStarted) {
+            showPsJobStartedModal = true;
+          }
+          
+          await update();
+          await invalidateAll();
+        };
+      }}>
+        <!-- Class Selection -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            PowerSchool Class
+          </label>
+          <select 
+            name="classId" 
+            bind:value={psSelectedClass}
+            class="input w-full"
+            required
+          >
+            <option value="">Select a class...</option>
+            {#each (data as any).powerSchool.linkedClasses as cls}
+              <option value={cls.id}>
+                {cls.name} → {cls.psSection}
+              </option>
+            {/each}
+          </select>
+          {#if (data as any).powerSchool.linkedClasses.length === 0}
+            <p class="text-xs text-amber-600 mt-1">
+              No linked classes found. <a href="/teacher/settings" class="underline">Link a class first</a>
+            </p>
+          {/if}
+        </div>
+
+        <!-- Assignment Name -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            Assignment Name in PowerSchool
+          </label>
+          <input 
+            type="text" 
+            name="assignmentName" 
+            bind:value={psAssignmentName}
+            class="input w-full"
+            placeholder={data.test.title}
+          />
+        </div>
+
+        <!-- Category -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            Category <span class="text-red-500">*</span>
+          </label>
+          <select 
+            name="categoryId" 
+            bind:value={psSelectedCategory}
+            class="input w-full"
+            required
+          >
+            <option value="">Select a category...</option>
+            {#each (data as any).powerSchool.categories as cat}
+              <option value={cat.id}>{cat.name}</option>
+            {/each}
+          </select>
+          <p class="text-xs text-gray-500 mt-1">e.g. Quiz, Major Grade, Homework</p>
+        </div>
+
+        <!-- Due Date -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            Due Date
+          </label>
+          <input 
+            type="date" 
+            name="dueDate" 
+            bind:value={psDueDate}
+            class="input w-full"
+          />
+        </div>
+
+        <!-- Re-release option -->
+        {#if psAlreadyReleased > 0}
+          <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input 
+                type="checkbox" 
+                name="forceRerelease" 
+                value="true"
+                bind:checked={psForceRerelease}
+                class="mt-0.5"
+              />
+              <div>
+                <span class="text-sm font-medium text-amber-800">Update existing grades</span>
+                <p class="text-xs text-amber-700 mt-0.5">
+                  Re-release {psAlreadyReleased} grade{psAlreadyReleased !== 1 ? 's' : ''} that were already sent to PowerSchool
+                </p>
+              </div>
+            </label>
+          </div>
+        {/if}
+
+        <!-- Mark missing students option -->
+        <div class="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+          <label class="flex items-start gap-2 cursor-pointer">
+            <input 
+              type="checkbox" 
+              name="markMissing" 
+              value="true"
+              bind:checked={psMarkMissing}
+              class="mt-0.5"
+            />
+            <div>
+              <span class="text-sm font-medium text-gray-800">Mark missing students</span>
+              <p class="text-xs text-gray-600 mt-0.5">
+                Students who haven't submitted will be marked as "Missing" with a 0 in PowerSchool
+              </p>
+            </div>
+          </label>
+        </div>
+
+        <!-- Summary -->
+        <div class="p-3 bg-gray-50 rounded-lg mb-4">
+          <p class="text-sm text-gray-600">
+            {#if psForceRerelease}
+              <strong>{data.stats.graded}</strong> graded submission{data.stats.graded !== 1 ? 's' : ''} will be released/updated.
+            {:else}
+              <strong>{psGradedCount}</strong> graded submission{psGradedCount !== 1 ? 's' : ''} will be released.
+            {/if}
+            {#if selectedSubmissions.size > 0}
+              <br /><span class="text-indigo-600">(Only {selectedSubmissions.size} selected)</span>
+            {/if}
+          </p>
+        </div>
+
+        <!-- Hidden submission IDs if any selected -->
+        {#if selectedSubmissions.size > 0}
+          {#each [...selectedSubmissions] as id}
+            <input type="hidden" name="submissionIds" value={id} />
+          {/each}
+        {/if}
+
+        <div class="flex gap-3">
+          <button type="button" onclick={() => (showPowerSchoolModal = false)} class="btn btn-secondary flex-1">
+            Cancel
+          </button>
+          <button 
+            type="submit" 
+            class="btn btn-primary flex-1 bg-blue-600 hover:bg-blue-700"
+            disabled={psReleasing || !psSelectedClass || !psSelectedCategory || (psGradedCount === 0 && !psForceRerelease)}
+          >
+            {#if psReleasing}
+              <Loader2 class="w-4 h-4 animate-spin" />
+              {psForceRerelease ? 'Updating...' : 'Releasing...'}
+            {:else}
+              <Upload class="w-4 h-4" />
+              {psForceRerelease ? 'Update Grades' : 'Release Grades'}
+            {/if}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+{/if}
+
+<!-- Student Mapping Modal -->
+{#if showMappingModal}
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-hidden flex flex-col">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+            <Link class="w-5 h-5 text-amber-600" />
+          </div>
+          <div>
+            <h3 class="font-semibold text-gray-900">Map Students to PowerSchool</h3>
+            <p class="text-sm text-gray-500">{unmatchedStudents.length} student{unmatchedStudents.length !== 1 ? 's' : ''} couldn't be automatically matched</p>
+          </div>
+        </div>
+        <button onclick={() => (showMappingModal = false)} class="text-gray-400 hover:text-gray-600">
+          <X class="w-5 h-5" />
+        </button>
+      </div>
+
+      <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-sm text-amber-800">
+        <p><strong>Why am I seeing this?</strong> These Checkmate students couldn't be automatically matched to PowerSchool students by name or email. Please manually select the correct PowerSchool student for each.</p>
+      </div>
+
+      <div class="flex-1 overflow-y-auto mb-4">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 sticky top-0">
+            <tr>
+              <th class="text-left p-2 font-medium text-gray-700">Checkmate Student</th>
+              <th class="text-left p-2 font-medium text-gray-700">PowerSchool Student</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y">
+            {#each unmatchedStudents as student}
+              <tr class="hover:bg-gray-50">
+                <td class="p-2">
+                  <div class="font-medium">{student.studentName}</div>
+                  <div class="text-xs text-gray-500">{student.studentEmail}</div>
+                </td>
+                <td class="p-2">
+                  <select 
+                    class="input input-sm w-full"
+                    value={studentMappings[student.studentId] || ''}
+                    onchange={(e) => {
+                      const val = (e.target as HTMLSelectElement).value;
+                      if (val) {
+                        studentMappings[student.studentId] = parseInt(val);
+                      } else {
+                        delete studentMappings[student.studentId];
+                      }
+                      studentMappings = {...studentMappings};
+                    }}
+                  >
+                    <option value="">-- Select Student --</option>
+                    {#each psStudentsList as psStudent}
+                      <option value={psStudent.id}>
+                        {psStudent.name} ({psStudent.first_name} {psStudent.last_name})
+                      </option>
+                    {/each}
+                  </select>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="border-t pt-4">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm text-gray-600">
+            {Object.keys(studentMappings).length} of {unmatchedStudents.length} mapped
+          </span>
+        </div>
+        
+        <form method="POST" action="?/saveStudentMappings" use:enhance={() => {
+          savingMappings = true;
+          return async ({ result, update }) => {
+            savingMappings = false;
+            if (result.type === 'success') {
+              showMappingModal = false;
+              await update();
+            } else {
+              await update();
+            }
+          };
+        }}>
+          <input type="hidden" name="classId" value={mappingClassId} />
+          <input type="hidden" name="mappings" value={JSON.stringify(
+            Object.entries(studentMappings).map(([studentId, psStudentId]) => {
+              const psStudent = psStudentsList.find(s => s.id === psStudentId);
+              return {
+                studentId,
+                psStudentId,
+                psStudentName: psStudent?.name
+              };
+            })
+          )} />
+          
+          <div class="flex gap-3">
+            <button type="button" onclick={() => (showMappingModal = false)} class="btn btn-secondary flex-1">
+              Cancel
+            </button>
+            <button 
+              type="submit" 
+              class="btn btn-primary flex-1 bg-amber-600 hover:bg-amber-700"
+              disabled={savingMappings || Object.keys(studentMappings).length === 0}
+            >
+              {#if savingMappings}
+                <Loader2 class="w-4 h-4 animate-spin" />
+                Saving...
+              {:else}
+                <Save class="w-4 h-4" />
+                Save Mappings & Retry
+              {/if}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- PowerSchool Job Started Success Modal -->
+{#if showPsJobStartedModal}
+  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 text-center">
+      <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <School class="w-8 h-8 text-blue-600" />
+      </div>
+      
+      <h2 class="text-xl font-bold text-gray-900 mb-2">Syncing to PowerSchool!</h2>
+      
+      <p class="text-gray-600 mb-4">
+        Check back later! We're working on sending over your scores.
+      </p>
+      
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div class="flex items-center gap-3 text-blue-700">
+          <Loader2 class="w-5 h-5 animate-spin flex-shrink-0" />
+          <p class="text-sm text-left">
+            You can close this page — we'll notify you when it's done.
+          </p>
+        </div>
+      </div>
+      
+      <div class="flex gap-3">
+        <button 
+          onclick={() => (showPsJobStartedModal = false)} 
+          class="btn btn-secondary flex-1"
+        >
+          Stay Here
+        </button>
+        <a href="/teacher/jobs" class="btn btn-primary flex-1">
+          <ExternalLink class="w-4 h-4" />
+          View Compute Jobs
+        </a>
       </div>
     </div>
   </div>

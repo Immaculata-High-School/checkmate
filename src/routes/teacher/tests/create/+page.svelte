@@ -44,8 +44,8 @@
   let manualAutoGrade = $state(true);
   let manualClassId = $state('');
   let manualTotalPoints = $state<number | null>(null);
-  let manualQuestions = $state<{ type: string; question: string; options: string[]; correctAnswer: string; points: number }[]>([
-    { type: 'MULTIPLE_CHOICE', question: '', options: ['', '', '', ''], correctAnswer: '', points: 1 }
+  let manualQuestions = $state<{ type: string; question: string; options: string[]; correctAnswer: string; points: number; programmingLanguage: string }[]>([
+    { type: 'MULTIPLE_CHOICE', question: '', options: ['', '', '', ''], correctAnswer: '', points: 1, programmingLanguage: 'python' }
   ]);
 
   // Calculate current total points for manual questions
@@ -57,8 +57,35 @@
     { value: 'SHORT_ANSWER', label: 'Short Answer' },
     { value: 'LONG_ANSWER', label: 'Long Answer' },
     { value: 'ESSAY', label: 'Essay' },
-    { value: 'FILL_IN_BLANK', label: 'Fill in Blank' }
+    { value: 'FILL_IN_BLANK', label: 'Fill in Blank' },
+    { value: 'PROGRAMMING', label: 'Programming' }
   ];
+
+  // Programming language options
+  const programmingLanguages = [
+    { value: 'python', label: 'Python' },
+    { value: 'javascript', label: 'JavaScript' },
+    { value: 'typescript', label: 'TypeScript' },
+    { value: 'java', label: 'Java' },
+    { value: 'cpp', label: 'C++' },
+    { value: 'c', label: 'C' },
+    { value: 'csharp', label: 'C#' },
+    { value: 'html', label: 'HTML' },
+    { value: 'css', label: 'CSS' },
+    { value: 'sql', label: 'SQL' },
+    { value: 'php', label: 'PHP' },
+    { value: 'ruby', label: 'Ruby' },
+    { value: 'go', label: 'Go' },
+    { value: 'rust', label: 'Rust' },
+    { value: 'swift', label: 'Swift' },
+    { value: 'kotlin', label: 'Kotlin' }
+  ];
+
+  // Point allocation strategy
+  let pointAllocationStrategy = $state<'equal' | 'difficulty' | 'length' | 'type'>('difficulty');
+  let harderQuestionsMorePoints = $state(true);
+  let longerQuestionsMorePoints = $state(true);
+  let pointAllocationInstructions = $state('');
 
   function toggleType(type: string) {
     if (selectedTypes.includes(type)) {
@@ -78,7 +105,8 @@
       question: '',
       options: ['', '', '', ''],
       correctAnswer: '',
-      points: 1
+      points: 1,
+      programmingLanguage: 'python'
     }];
   }
 
@@ -217,6 +245,89 @@
             <p class="text-xs text-gray-500 mt-1">AI will distribute points per question. Leave blank for default (1 pt each).</p>
           </div>
         </div>
+
+        {#if totalPoints}
+          <div class="card p-6">
+            <label class="block text-sm font-medium text-gray-700 mb-4">Point Allocation Strategy</label>
+            <div class="grid sm:grid-cols-2 gap-3 mb-4">
+              {#each [
+                { value: 'equal', label: 'Equal Distribution', desc: 'All questions get similar points' },
+                { value: 'difficulty', label: 'By Difficulty', desc: 'Harder questions worth more' },
+                { value: 'length', label: 'By Answer Length', desc: 'Longer answers worth more' },
+                { value: 'type', label: 'By Question Type', desc: 'Different types have different values' }
+              ] as strategy}
+                <button
+                  type="button"
+                  onclick={() => pointAllocationStrategy = strategy.value as any}
+                  class="p-3 rounded-lg border-2 text-left transition-all {pointAllocationStrategy === strategy.value
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'}"
+                >
+                  <div class="font-medium text-gray-900">{strategy.label}</div>
+                  <div class="text-xs text-gray-500">{strategy.desc}</div>
+                </button>
+              {/each}
+            </div>
+            <input type="hidden" name="pointAllocationStrategy" value={pointAllocationStrategy} />
+
+            {#if pointAllocationStrategy === 'difficulty'}
+              <div class="mt-4 p-3 bg-gray-50 rounded-lg">
+                <label class="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    bind:checked={harderQuestionsMorePoints}
+                    class="w-4 h-4 rounded"
+                  />
+                  <div>
+                    <span class="font-medium text-gray-700">Harder questions get more points</span>
+                    <p class="text-xs text-gray-500">
+                      {harderQuestionsMorePoints 
+                        ? 'Essays & long answers will be worth more than multiple choice'
+                        : 'Easier questions will be worth more to encourage completion'}
+                    </p>
+                  </div>
+                </label>
+                <input type="hidden" name="harderQuestionsMorePoints" value={harderQuestionsMorePoints.toString()} />
+              </div>
+            {/if}
+
+            {#if pointAllocationStrategy === 'length'}
+              <div class="mt-4 p-3 bg-gray-50 rounded-lg">
+                <label class="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    bind:checked={longerQuestionsMorePoints}
+                    class="w-4 h-4 rounded"
+                  />
+                  <div>
+                    <span class="font-medium text-gray-700">Longer answers get more points</span>
+                    <p class="text-xs text-gray-500">
+                      {longerQuestionsMorePoints 
+                        ? 'Questions requiring detailed responses will be worth more'
+                        : 'Concise answers will be rewarded with higher points'}
+                    </p>
+                  </div>
+                </label>
+                <input type="hidden" name="longerQuestionsMorePoints" value={longerQuestionsMorePoints.toString()} />
+              </div>
+            {/if}
+
+            <div class="mt-4">
+              <label for="pointAllocationInstructions" class="block text-sm font-medium text-gray-700 mb-2">
+                Custom Point Allocation Instructions (Optional)
+              </label>
+              <textarea
+                id="pointAllocationInstructions"
+                name="pointAllocationInstructions"
+                bind:value={pointAllocationInstructions}
+                rows="2"
+                class="input text-sm"
+                placeholder="e.g., Give programming questions 2x points, essay questions should be worth at least 10 points each..."
+              ></textarea>
+              <p class="text-xs text-gray-500 mt-1">Add specific instructions for how AI should distribute points.</p>
+            </div>
+          </div>
+        {/if}
 
         <div class="card p-6">
           <label class="block text-sm font-medium text-gray-700 mb-2">Difficulty</label>
@@ -535,6 +646,26 @@
                       <input type="radio" name="tf-{qIndex}" value="False" bind:group={q.correctAnswer} class="w-4 h-4" />
                       False
                     </label>
+                  </div>
+                {:else if q.type === 'PROGRAMMING'}
+                  <div class="space-y-3">
+                    <div>
+                      <label class="text-sm text-gray-500 mb-1 block">Programming Language</label>
+                      <select bind:value={q.programmingLanguage} class="input">
+                        {#each programmingLanguages as lang}
+                          <option value={lang.value}>{lang.label}</option>
+                        {/each}
+                      </select>
+                    </div>
+                    <div>
+                      <label class="text-sm text-gray-500 mb-1 block">Sample Solution / Key Elements (for grading)</label>
+                      <textarea
+                        bind:value={q.correctAnswer}
+                        rows="6"
+                        class="input font-mono text-sm"
+                        placeholder="Enter sample solution code or key elements the AI should look for..."
+                      ></textarea>
+                    </div>
                   </div>
                 {:else}
                   <input

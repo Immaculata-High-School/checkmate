@@ -170,7 +170,8 @@
               </div>
               <div class="flex items-center gap-2">
                 {#if submission.status === 'GRADED' && submission.score !== null}
-                  {@const percentage = calculatePercentage(submission.score, submission.totalPoints || 1)}
+                  {@const totalScore = (submission.score || 0) + (submission.bonusPoints || 0)}
+                  {@const percentage = calculatePercentage(Math.min(totalScore, submission.totalPoints || totalScore), submission.totalPoints || 1)}
                   <div
                     class="px-3 py-1 rounded-full text-sm font-bold {getGradeColor(percentage)} {percentage >= 70
                       ? 'bg-green-100'
