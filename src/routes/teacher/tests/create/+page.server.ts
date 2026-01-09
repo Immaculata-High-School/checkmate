@@ -42,6 +42,11 @@ export const actions: Actions = {
     const totalPointsStr = formData.get('totalPoints')?.toString();
     const totalPoints = totalPointsStr ? parseInt(totalPointsStr) : null;
     
+    // File upload content
+    const extractedText = formData.get('extractedText')?.toString();
+    const useFileContent = formData.get('useFileContent') === 'true';
+    const sourceContent = useFileContent && extractedText ? extractedText : undefined;
+    
     // Point allocation options
     const pointAllocationStrategy = formData.get('pointAllocationStrategy')?.toString() as 'equal' | 'difficulty' | 'length' | 'type' || 'difficulty';
     const harderQuestionsMorePoints = formData.get('harderQuestionsMorePoints') !== 'false';
@@ -82,6 +87,7 @@ export const actions: Actions = {
           difficulty: difficulty || 'medium',
           additionalInstructions,
           totalPoints,
+          sourceContent,
           pointAllocation: totalPoints ? {
             strategy: pointAllocationStrategy,
             harderQuestionsMorePoints,

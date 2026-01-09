@@ -30,6 +30,7 @@ export const actions: Actions = {
     const formData = await request.formData();
     const testId = formData.get('testId')?.toString();
     const title = formData.get('title')?.toString().trim();
+    const additionalInstructions = formData.get('additionalInstructions')?.toString().trim() || '';
 
     if (!testId) {
       return fail(400, { error: 'Please select a test to generate from' });
@@ -77,7 +78,8 @@ export const actions: Actions = {
             type: q.type,
             correctAnswer: q.correctAnswer || '',
             points: q.points
-          }))
+          })),
+          additionalInstructions
         },
         {
           userId: locals.user!.id,

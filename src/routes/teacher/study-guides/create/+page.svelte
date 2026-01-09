@@ -1,6 +1,6 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
-  import { BookOpen, Sparkles, FileText, ArrowLeft, Loader2, AlertCircle, PenLine } from 'lucide-svelte';
+  import { BookOpen, Sparkles, FileText, ArrowLeft, Loader2, AlertCircle, PenLine, Wand2, CheckCircle } from 'lucide-svelte';
   import type { PageData, ActionData } from './$types';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -10,6 +10,7 @@
   let generating = $state(false);
   let title = $state('');
   let content = $state('');
+  let additionalInstructions = $state('');
 
   const selectedTest = $derived(data.tests.find(t => t.id === selectedTestId));
 </script>
@@ -24,8 +25,13 @@
       <ArrowLeft class="w-4 h-4" />
       Back to Study Guides
     </a>
-    <h1 class="text-2xl font-bold text-gray-900">Create Study Guide</h1>
-    <p class="text-gray-500 mt-1">Create study materials to help students prepare</p>
+    <h1 class="text-2xl font-bold text-gray-900 flex items-center gap-3">
+      <div class="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
+        <BookOpen class="w-5 h-5 text-slate-600" />
+      </div>
+      Create Study Guide
+    </h1>
+    <p class="text-gray-500 mt-2 ml-13">Create study materials to help students prepare</p>
   </div>
 
   {#if form?.error}
@@ -36,17 +42,17 @@
   {/if}
 
   {#if mode === 'choose'}
-    <div class="grid md:grid-cols-2 gap-4">
+    <div class="grid md:grid-cols-2 gap-6">
       <button
         type="button"
         onclick={() => mode = 'generate'}
-        class="card p-6 text-left hover:shadow-lg hover:border-amber-300 transition-all group"
+        class="bg-white rounded-xl border-2 border-gray-200 p-8 text-left hover:border-violet-300 hover:shadow-md transition-all group"
       >
-        <div class="w-14 h-14 bg-amber-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-amber-200 transition-colors">
-          <Sparkles class="w-7 h-7 text-amber-600" />
+        <div class="w-14 h-14 bg-violet-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-violet-200 transition-colors">
+          <Wand2 class="w-7 h-7 text-violet-600" />
         </div>
         <h3 class="text-lg font-semibold text-gray-900 mb-2">Generate from Test</h3>
-        <p class="text-gray-500 text-sm">
+        <p class="text-gray-600 text-sm">
           Use AI to automatically create a comprehensive study guide based on one of your tests.
         </p>
       </button>
@@ -54,23 +60,23 @@
       <button
         type="button"
         onclick={() => mode = 'manual'}
-        class="card p-6 text-left hover:shadow-lg hover:border-blue-300 transition-all group"
+        class="bg-white rounded-xl border-2 border-gray-200 p-8 text-left hover:border-slate-300 hover:shadow-md transition-all group"
       >
-        <div class="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-blue-200 transition-colors">
-          <PenLine class="w-7 h-7 text-blue-600" />
+        <div class="w-14 h-14 bg-slate-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-slate-200 transition-colors">
+          <PenLine class="w-7 h-7 text-slate-600" />
         </div>
         <h3 class="text-lg font-semibold text-gray-900 mb-2">Create Manually</h3>
-        <p class="text-gray-500 text-sm">
+        <p class="text-gray-600 text-sm">
           Write your own study guide content from scratch with full control.
         </p>
       </button>
     </div>
   {:else if mode === 'generate'}
-    <div class="card">
-      <div class="p-6 border-b border-gray-200">
+    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-200 bg-slate-50">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
-            <Sparkles class="w-5 h-5 text-amber-600" />
+          <div class="w-10 h-10 bg-violet-100 rounded-lg flex items-center justify-center">
+            <Wand2 class="w-5 h-5 text-violet-600" />
           </div>
           <div>
             <h2 class="font-semibold text-gray-900">Generate from Test</h2>
@@ -92,9 +98,11 @@
         class="p-6 space-y-6"
       >
         <div class="form-group">
-          <label for="testId" class="label">Select a Test</label>
+          <label for="testId" class="block text-sm font-medium text-gray-700 mb-1">Select a Test</label>
           {#if data.tests.length === 0}
-            <p class="text-gray-500 text-sm">You don't have any tests yet. <a href="/teacher/tests/create" class="text-blue-600 hover:underline">Create a test first</a>.</p>
+            <div class="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+              You don't have any tests yet. <a href="/teacher/tests/create" class="font-medium underline">Create a test first</a>.
+            </div>
           {:else}
             <select
               id="testId"
@@ -112,9 +120,9 @@
         </div>
 
         {#if selectedTest}
-          <div class="p-4 bg-gray-50 rounded-lg">
+          <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg">
             <div class="flex items-center gap-3">
-              <FileText class="w-5 h-5 text-gray-400" />
+              <FileText class="w-5 h-5 text-slate-500" />
               <div>
                 <p class="font-medium text-gray-900">{selectedTest.title}</p>
                 <p class="text-sm text-gray-500">{selectedTest.questions.length} questions will be analyzed</p>
@@ -124,7 +132,7 @@
         {/if}
 
         <div class="form-group">
-          <label for="title" class="label">Study Guide Title (Optional)</label>
+          <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Study Guide Title (Optional)</label>
           <input
             type="text"
             id="title"
@@ -133,10 +141,25 @@
             placeholder="Leave blank to auto-generate"
             class="input"
           />
+          <p class="text-xs text-gray-500 mt-1">If left blank, a title will be generated based on the test</p>
+        </div>
+
+        <div class="form-group">
+          <label for="instructions" class="block text-sm font-medium text-gray-700 mb-1">Additional AI Instructions (Optional)</label>
+          <textarea
+            id="instructions"
+            name="additionalInstructions"
+            rows="3"
+            bind:value={additionalInstructions}
+            placeholder="e.g., Focus on key concepts, include memory tips, add practice examples..."
+            class="input"
+          ></textarea>
+          <p class="text-xs text-gray-500 mt-1">Provide any specific instructions for the AI to follow</p>
         </div>
 
         <div class="flex gap-3">
-          <button type="button" onclick={() => mode = 'choose'} class="btn btn-secondary flex-1">
+          <button type="button" onclick={() => mode = 'choose'} class="btn btn-secondary">
+            <ArrowLeft class="w-4 h-4" />
             Back
           </button>
           <button
@@ -156,11 +179,11 @@
       </form>
     </div>
   {:else if mode === 'manual'}
-    <div class="card">
-      <div class="p-6 border-b border-gray-200">
+    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-200 bg-slate-50">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-            <PenLine class="w-5 h-5 text-blue-600" />
+          <div class="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
+            <PenLine class="w-5 h-5 text-slate-600" />
           </div>
           <div>
             <h2 class="font-semibold text-gray-900">Create Manually</h2>
@@ -171,7 +194,7 @@
 
       <form method="POST" action="?/create" use:enhance class="p-6 space-y-6">
         <div class="form-group">
-          <label for="manual-title" class="label">Title</label>
+          <label for="manual-title" class="block text-sm font-medium text-gray-700 mb-1">Title</label>
           <input
             type="text"
             id="manual-title"
@@ -184,8 +207,8 @@
         </div>
 
         <div class="form-group">
-          <label for="content" class="label">Content</label>
-          <p class="text-sm text-gray-500 mb-2">You can use HTML for formatting (headings, lists, etc.)</p>
+          <label for="content" class="block text-sm font-medium text-gray-700 mb-1">Content</label>
+          <p class="text-xs text-gray-500 mb-2">You can use HTML for formatting (headings, lists, tables, etc.)</p>
           <textarea
             id="content"
             name="content"
@@ -199,17 +222,18 @@
 </ul>
 
 <h2>Definitions</h2>
-<p>Term 1: Definition here...</p>"
+<p><strong>Term 1:</strong> Definition here...</p>"
             class="input font-mono text-sm"
           ></textarea>
         </div>
 
         <div class="flex gap-3">
-          <button type="button" onclick={() => mode = 'choose'} class="btn btn-secondary flex-1">
+          <button type="button" onclick={() => mode = 'choose'} class="btn btn-secondary">
+            <ArrowLeft class="w-4 h-4" />
             Back
           </button>
-          <button type="submit" class="btn btn-primary flex-1">
-            <BookOpen class="w-4 h-4" />
+          <button type="submit" disabled={!title || !content} class="btn btn-primary flex-1">
+            <CheckCircle class="w-4 h-4" />
             Create Study Guide
           </button>
         </div>

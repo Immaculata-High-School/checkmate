@@ -167,67 +167,131 @@ export class ShuttleAIService {
       type?: string;
       context?: AIContext;
       metadata?: Record<string, unknown>;
+      creditMultiplier?: number; // Multiply token count for billing (e.g., 2x for file uploads)
     }
   ): Promise<string> {
     const selectedModel = options?.model || (await this.getModel());
     const startTime = Date.now();
+    
+    // Retry configuration
+    const maxRetries = 3;
+    const retryDelays = [1000, 2000, 4000]; // Exponential backoff
+    let lastError: Error | null = null;
 
-    const response = await fetch(this.baseUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`
-      },
-      body: JSON.stringify({
-        model: selectedModel,
-        messages,
-        temperature: 0.7,
-        max_tokens: maxTokens
-      })
-    });
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Add timeout to prevent hanging requests
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
 
-    const duration = Date.now() - startTime;
-
-    if (!response.ok) {
-      const error = await response.text();
-
-      // Log failed request
-      if (options?.context) {
-        await this.logUsage({
-          type: options.type || 'UNKNOWN',
-          model: selectedModel,
-          inputTokens: 0,
-          outputTokens: 0,
-          totalTokens: 0,
-          duration,
-          success: false,
-          error: error.substring(0, 500),
-          metadata: options.metadata,
-          context: options.context
+        const response = await fetch(this.baseUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.apiKey}`
+          },
+          body: JSON.stringify({
+            model: selectedModel,
+            messages,
+            temperature: 0.7,
+            max_tokens: maxTokens
+          }),
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
+
+        const duration = Date.now() - startTime;
+
+        if (!response.ok) {
+          const error = await response.text();
+
+          // Log failed request
+          if (options?.context) {
+            await this.logUsage({
+              type: options.type || 'UNKNOWN',
+              model: selectedModel,
+              inputTokens: 0,
+              outputTokens: 0,
+              totalTokens: 0,
+              duration,
+              success: false,
+              error: error.substring(0, 500),
+              metadata: options.metadata,
+              context: options.context
+            });
+          }
+
+          throw new Error(`ShuttleAI API error: ${error}`);
+        }
+
+        const data: ShuttleAIResponse = await response.json();
+
+        // Apply credit multiplier if specified (e.g., 2x for file uploads)
+        const multiplier = options?.creditMultiplier || 1;
+        const billedInputTokens = (data.usage?.prompt_tokens || 0) * multiplier;
+        const billedOutputTokens = (data.usage?.completion_tokens || 0) * multiplier;
+        const billedTotalTokens = (data.usage?.total_tokens || 0) * multiplier;
+
+        // Log successful request
+        if (options?.context) {
+          await this.logUsage({
+            type: options.type || 'UNKNOWN',
+            model: selectedModel,
+            inputTokens: billedInputTokens,
+            outputTokens: billedOutputTokens,
+            totalTokens: billedTotalTokens,
+            duration,
+            success: true,
+            metadata: { ...options.metadata, creditMultiplier: multiplier },
+            context: options.context
+          });
+        }
+
+        return data.choices[0]?.message?.content || '';
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        // Check if this is a retryable error
+        const isRetryable = 
+          lastError.message.includes('fetch failed') ||
+          lastError.message.includes('socket') ||
+          lastError.message.includes('ECONNRESET') ||
+          lastError.message.includes('ETIMEDOUT') ||
+          lastError.message.includes('aborted') ||
+          lastError.name === 'AbortError';
+
+        if (!isRetryable || attempt === maxRetries - 1) {
+          console.error(`ShuttleAI request failed (attempt ${attempt + 1}/${maxRetries}):`, lastError.message);
+          
+          // Log the final failure
+          if (options?.context) {
+            const duration = Date.now() - startTime;
+            await this.logUsage({
+              type: options.type || 'UNKNOWN',
+              model: selectedModel,
+              inputTokens: 0,
+              outputTokens: 0,
+              totalTokens: 0,
+              duration,
+              success: false,
+              error: lastError.message.substring(0, 500),
+              metadata: options.metadata,
+              context: options.context
+            });
+          }
+          
+          throw lastError;
+        }
+
+        // Wait before retrying
+        console.warn(`ShuttleAI request failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${retryDelays[attempt]}ms...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelays[attempt]));
       }
-
-      throw new Error(`ShuttleAI API error: ${error}`);
     }
 
-    const data: ShuttleAIResponse = await response.json();
-
-    // Log successful request
-    if (options?.context) {
-      await this.logUsage({
-        type: options.type || 'UNKNOWN',
-        model: selectedModel,
-        inputTokens: data.usage?.prompt_tokens || 0,
-        outputTokens: data.usage?.completion_tokens || 0,
-        totalTokens: data.usage?.total_tokens || 0,
-        duration,
-        success: true,
-        metadata: options.metadata,
-        context: options.context
-      });
-    }
-
-    return data.choices[0]?.message?.content || '';
+    // Should never reach here, but just in case
+    throw lastError || new Error('ShuttleAI request failed after all retries');
   }
 
   private extractAndRepairJSON(response: string, expectArray: boolean = true): unknown {
@@ -321,6 +385,7 @@ export class ShuttleAIService {
         typeWeights?: Record<string, number>;
         customInstructions?: string;
       };
+      sourceContent?: string; // Extracted text from uploaded file
     },
     context?: AIContext
   ): Promise<
@@ -392,7 +457,16 @@ IMPORTANT: For programming/coding questions, you MUST:
       ? `\n- programmingLanguage: For PROGRAMMING type questions, specify the programming language (e.g., "python", "javascript", "java", "c", "cpp", "sql", etc.). Set to null for non-programming questions.`
       : '';
 
-    const userPrompt = `Create EXACTLY ${params.numberOfQuestions} ${params.difficulty} difficulty test questions about: ${params.topic}
+    // Add source content instructions if provided
+    const sourceContentInstruction = params.sourceContent 
+      ? `\n\nSOURCE MATERIAL (Base questions on this content):
+---
+${params.sourceContent.slice(0, 8000)}${params.sourceContent.length > 8000 ? '\n\n[Content truncated...]' : ''}
+---
+IMPORTANT: Create questions that directly test knowledge from the source material above. Focus on key concepts, definitions, and important facts from this content.`
+      : '';
+
+    const userPrompt = `Create EXACTLY ${params.numberOfQuestions} ${params.difficulty} difficulty test questions about: ${params.topic}${sourceContentInstruction}
 
 IMPORTANT: You MUST generate exactly ${params.numberOfQuestions} questions. Not more, not less.
 
@@ -420,14 +494,19 @@ CRITICAL: Return ONLY the JSON array with exactly ${params.numberOfQuestions} qu
     ];
 
     const estimatedTokensPerQuestion = 350;
-    const baseTokens = 2000;
+    const baseTokens = params.sourceContent ? 4000 : 2000; // More tokens if processing source content
     const calculatedTokens = baseTokens + params.numberOfQuestions * estimatedTokensPerQuestion;
     const maxTokens = Math.max(4000, Math.min(calculatedTokens, 16000));
 
     const response = await this.makeRequest(messages, maxTokens, {
       type: 'TEST_GENERATION',
       context,
-      metadata: { topic: params.topic, numberOfQuestions: params.numberOfQuestions }
+      metadata: { 
+        topic: params.topic, 
+        numberOfQuestions: params.numberOfQuestions,
+        hasSourceContent: !!params.sourceContent 
+      },
+      creditMultiplier: params.sourceContent ? 2 : 1 // Double credits for file upload
     });
     let questions = this.extractAndRepairJSON(response, true) as Array<{
       type: QuestionType;
@@ -724,96 +803,129 @@ Return ONLY the JSON object. No markdown. No code blocks. Just pure JSON.`;
         correctAnswer: string;
         points: number;
       }>;
+      additionalInstructions?: string;
     },
     context?: AIContext
   ): Promise<string> {
-    const systemPrompt = `You are an expert educator creating visually stunning, engaging study guides. Generate a comprehensive study guide with RICH HTML formatting and INLINE STYLES for beautiful presentation.
+    const systemPrompt = `You are an expert educator creating professional, well-designed study guides. Generate a comprehensive study guide using clean HTML with FontAwesome icons for visual appeal.
 
-REQUIRED STYLING - Use these exact inline styles:
+FORMATTING GUIDELINES - Use FontAwesome icons and styled boxes:
 
-1. SECTION HEADERS - Use colored headers with icons (use emoji):
-   <h2 style="color: #1e40af; border-bottom: 3px solid #3b82f6; padding-bottom: 8px; margin-top: 24px;">📚 Section Title</h2>
-   <h3 style="color: #7c3aed; margin-top: 20px;">💡 Subsection Title</h3>
+1. SECTION HEADERS with icons:
+   <h2><i class="fas fa-book-open"></i> Introduction</h2>
+   <h2><i class="fas fa-lightbulb"></i> Key Concepts</h2>
+   <h2><i class="fas fa-list"></i> Important Terms</h2>
+   <h2><i class="fas fa-pencil-alt"></i> Practice Questions</h2>
+   <h2><i class="fas fa-star"></i> Study Tips</h2>
+   <h2><i class="fas fa-exclamation-triangle"></i> Common Mistakes</h2>
+   <h2><i class="fas fa-check-square"></i> Review Checklist</h2>
 
-2. KEY CONCEPT BOXES - Blue highlighted boxes:
-   <div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-left: 4px solid #3b82f6; padding: 16px 20px; border-radius: 8px; margin: 16px 0;">
-     <strong style="color: #1e40af;">🔑 Key Concept:</strong>
-     <p style="margin: 8px 0 0 0; color: #1e3a8a;">Content here...</p>
+2. KEY CONCEPT boxes:
+   <div class="key-concept">
+     <strong><i class="fas fa-key"></i> Key Concept:</strong> Important information here...
    </div>
 
-3. TIP BOXES - Green helpful tips:
-   <div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-left: 4px solid #10b981; padding: 16px 20px; border-radius: 8px; margin: 16px 0;">
-     <strong style="color: #065f46;">💪 Study Tip:</strong>
-     <p style="margin: 8px 0 0 0; color: #064e3b;">Content here...</p>
+3. TIP boxes:
+   <div class="tip">
+     <strong><i class="fas fa-lightbulb"></i> Study Tip:</strong> Helpful advice here...
    </div>
 
-4. WARNING BOXES - Orange/red for common mistakes:
-   <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-left: 4px solid #f59e0b; padding: 16px 20px; border-radius: 8px; margin: 16px 0;">
-     <strong style="color: #92400e;">⚠️ Watch Out:</strong>
-     <p style="margin: 8px 0 0 0; color: #78350f;">Content here...</p>
+4. WARNING boxes for common mistakes:
+   <div class="warning">
+     <strong><i class="fas fa-exclamation-circle"></i> Watch Out:</strong> Common mistake to avoid...
    </div>
 
-5. PRACTICE QUESTION BOXES - Purple for questions:
-   <div style="background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%); border: 2px solid #8b5cf6; padding: 16px 20px; border-radius: 12px; margin: 16px 0;">
-     <strong style="color: #6d28d9;">✏️ Practice Question:</strong>
-     <p style="margin: 8px 0; color: #5b21b6;">Question text...</p>
-     <details style="margin-top: 12px;">
-       <summary style="color: #7c3aed; cursor: pointer; font-weight: 600;">Click to reveal answer</summary>
-       <p style="margin-top: 8px; padding: 12px; background: white; border-radius: 6px; color: #4c1d95;">Answer here...</p>
+5. DEFINITIONS - use definition lists:
+   <dl>
+     <dt><i class="fas fa-bookmark"></i> Term</dt>
+     <dd>Definition of the term...</dd>
+   </dl>
+
+6. PRACTICE QUESTIONS:
+   <div class="practice-question">
+     <strong><i class="fas fa-question-circle"></i> Practice Question:</strong>
+     <p>Question text here?</p>
+     <details>
+       <summary><i class="fas fa-eye"></i> Show Answer</summary>
+       <p>Answer explanation here...</p>
      </details>
    </div>
 
-6. DEFINITION LISTS - Styled terms:
-   <div style="background: #f8fafc; padding: 12px 16px; border-radius: 8px; margin: 8px 0; border: 1px solid #e2e8f0;">
-     <strong style="color: #0f172a;">Term:</strong> <span style="color: #475569;">Definition...</span>
-   </div>
-
-7. NUMBERED STEPS - For processes:
-   <div style="display: flex; gap: 12px; align-items: flex-start; margin: 12px 0;">
-     <span style="background: #3b82f6; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; flex-shrink: 0;">1</span>
-     <p style="margin: 0; color: #334155;">Step description...</p>
-   </div>
-
-8. BULLET LISTS - Use styled bullets:
-   <ul style="list-style: none; padding-left: 0;">
-     <li style="padding: 8px 0; padding-left: 28px; position: relative;"><span style="position: absolute; left: 0; color: #3b82f6;">●</span> Item text</li>
+7. CHECKLISTS for review:
+   <ul class="checklist">
+     <li><i class="far fa-square"></i> Item to review</li>
+     <li><i class="far fa-square"></i> Another item</li>
    </ul>
 
+8. Tables for comparisons:
+   <table>
+     <thead><tr><th>Column 1</th><th>Column 2</th></tr></thead>
+     <tbody><tr><td>Data</td><td>Data</td></tr></tbody>
+   </table>
+
+9. NUMBERED STEPS:
+   <ol class="steps">
+     <li>First step</li>
+     <li>Second step</li>
+   </ol>
+
+FONTAWESOME ICONS TO USE:
+- <i class="fas fa-book-open"></i> for main sections/introduction
+- <i class="fas fa-lightbulb"></i> for tips and ideas
+- <i class="fas fa-key"></i> for key concepts
+- <i class="fas fa-exclamation-triangle"></i> for warnings
+- <i class="fas fa-exclamation-circle"></i> for caution
+- <i class="fas fa-question-circle"></i> for questions
+- <i class="fas fa-check-circle"></i> for correct/success
+- <i class="fas fa-times-circle"></i> for incorrect/avoid
+- <i class="fas fa-bookmark"></i> for definitions/terms
+- <i class="fas fa-star"></i> for important points
+- <i class="fas fa-arrow-right"></i> for implications
+- <i class="fas fa-pencil-alt"></i> for practice
+- <i class="fas fa-check-square"></i> for checklist headers
+- <i class="far fa-square"></i> for unchecked items
+- <i class="fas fa-graduation-cap"></i> for learning objectives
+- <i class="fas fa-brain"></i> for memory tips
+
 CONTENT REQUIREMENTS:
-- Start with an engaging introduction with a motivational message
-- Cover ALL key topics from the test questions
-- Include at least 3-5 practice questions (DIFFERENT from actual test questions)
-- Add memory tricks, mnemonics, or visual associations where helpful
-- End with a "Quick Review Checklist" using checkboxes: ☐
-- Use emojis throughout to make it engaging (📌 🎯 ✨ 🧠 📝 ⭐ 🔍 💭)
+- Write in a clear, professional academic tone
+- Cover ALL key topics from the test questions thoroughly
+- Include 4-6 practice questions (DIFFERENT from actual test questions)
+- Add helpful memory techniques or study strategies
+- End with a review checklist
+- Use FontAwesome icons to make it visually organized
+- NO emojis - use FontAwesome icons instead
 
 IMPORTANT:
 - DO NOT include exact test questions
-- DO NOT reveal exact answers
+- DO NOT reveal exact answers from the test
 - Create SIMILAR but DIFFERENT practice questions
-- Return ONLY the HTML content (no <html>, <head>, or <body> tags)
-- Make it visually BEAUTIFUL and ENGAGING for students`;
+- Return ONLY the HTML content (no <html>, <head>, or <body> tags)`;
 
     const questionSummary = params.questions
       .map((q, idx) => `Question ${idx + 1} (${q.type}, ${q.points} pts): Topic - "${q.question.substring(0, 80)}..."`)
       .join('\n');
 
-    const userPrompt = `Create a beautiful, engaging study guide for: "${params.testTitle}"
+    let userPrompt = `Create a professional study guide for: "${params.testTitle}"
 ${params.testDescription ? `Description: ${params.testDescription}` : ''}
 
 The test covers these ${params.questions.length} topics:
 ${questionSummary}
 
-Generate a comprehensive, visually stunning study guide with:
-1. 🎯 Welcome section with motivational intro
-2. 📚 Key Concepts section with detailed explanations (use concept boxes)
-3. 💡 Important Terms & Definitions
-4. ✏️ Practice Questions section (create 4-6 NEW questions with hidden answers)
-5. 💪 Study Tips & Strategies (use tip boxes)
-6. ⚠️ Common Mistakes to Avoid (use warning boxes)
-7. ☐ Quick Review Checklist at the end
+Generate a comprehensive, well-organized study guide with FontAwesome icons:
+1. <i class="fas fa-book-open"></i> Introduction - Brief overview using a key-concept box
+2. <i class="fas fa-lightbulb"></i> Key Concepts - Detailed explanations with key-concept and tip boxes
+3. <i class="fas fa-list"></i> Important Terms & Definitions - Use definition lists with bookmark icons
+4. <i class="fas fa-pencil-alt"></i> Practice Questions - Create 4-6 questions using practice-question boxes with expandable answers
+5. <i class="fas fa-star"></i> Study Tips - Use tip boxes with lightbulb icons
+6. <i class="fas fa-exclamation-triangle"></i> Common Mistakes - Use warning boxes
+7. <i class="fas fa-check-square"></i> Review Checklist - Use checklist with square icons`;
 
-Make it colorful, engaging, and helpful! Use all the styled boxes and formatting from the system prompt.`;
+    if (params.additionalInstructions) {
+      userPrompt += `\n\nAdditional Instructions from teacher:\n${params.additionalInstructions}`;
+    }
+
+    userPrompt += `\n\nUse FontAwesome icons throughout for a professional, organized look. No emojis.`;
 
     const messages: Message[] = [
       { role: 'system', content: systemPrompt },
@@ -845,6 +957,8 @@ Make it colorful, engaging, and helpful! Use all the styled boxes and formatting
       itemTypes: string[];
       difficulty: 'easy' | 'medium' | 'hard';
       includeGraphs?: boolean;
+      sourceContent?: string; // Extracted text from uploaded file
+      additionalInstructions?: string;
     },
     context?: AIContext
   ): Promise<
@@ -866,7 +980,16 @@ CRITICAL FORMATTING RULES:
 2. Start your response directly with [ and end with ]
 3. No explanatory text before or after`;
 
-    const userPrompt = `Create ${params.numberOfItems} ${params.difficulty} difficulty worksheet items for ${params.subject} about: ${params.topic}
+    // Add source content instructions if provided
+    const sourceContentInstruction = params.sourceContent 
+      ? `\n\nSOURCE MATERIAL (Base worksheet items on this content):
+---
+${params.sourceContent.slice(0, 8000)}${params.sourceContent.length > 8000 ? '\n\n[Content truncated...]' : ''}
+---
+IMPORTANT: Create worksheet items that directly test and practice concepts from the source material above. Focus on key concepts, formulas, definitions, and important facts from this content.`
+      : '';
+
+    let userPrompt = `Create ${params.numberOfItems} ${params.difficulty} difficulty worksheet items for ${params.subject} about: ${params.topic}${sourceContentInstruction}
 ${params.gradeLevel ? `Grade Level: ${params.gradeLevel}` : ''}
 
 Item types to include: ${params.itemTypes.join(', ')}
@@ -879,9 +1002,13 @@ Return a JSON array where each item object has:
 - options: Array of strings (for MULTIPLE_CHOICE) or null
 - answer: The correct answer (optional)
 - hint: A helpful hint (optional)
-- difficulty: "easy", "medium", or "hard"
+- difficulty: "easy", "medium", or "hard"`;
 
-Return ONLY the JSON array.`;
+    if (params.additionalInstructions) {
+      userPrompt += `\n\nAdditional Instructions from teacher:\n${params.additionalInstructions}`;
+    }
+
+    userPrompt += `\n\nReturn ONLY the JSON array.`;
 
     const messages: Message[] = [
       { role: 'system', content: systemPrompt },
@@ -889,12 +1016,18 @@ Return ONLY the JSON array.`;
     ];
 
     const baseTokensPerItem = params.includeGraphs ? 600 : 300;
-    const maxTokens = Math.max(4000, Math.min(1500 + params.numberOfItems * baseTokensPerItem, 16000));
+    const baseTokens = params.sourceContent ? 3000 : 1500; // More tokens for source content
+    const maxTokens = Math.max(4000, Math.min(baseTokens + params.numberOfItems * baseTokensPerItem, 16000));
 
     const response = await this.makeRequest(messages, maxTokens, {
       type: 'WORKSHEET_GENERATION',
       context,
-      metadata: { topic: params.topic, numberOfItems: params.numberOfItems }
+      metadata: { 
+        topic: params.topic, 
+        numberOfItems: params.numberOfItems,
+        hasSourceContent: !!params.sourceContent 
+      },
+      creditMultiplier: params.sourceContent ? 2 : 1 // Double credits for file upload
     });
     const items = this.extractAndRepairJSON(response, true) as Array<{
       type: WorksheetItemType;
@@ -1000,6 +1133,7 @@ Return ONLY the HTML content.`;
     params: {
       topic: string;
       numberOfCards: number;
+      additionalInstructions?: string;
     },
     context?: AIContext
   ): Promise<Array<{ front: string; back: string }>> {
@@ -1010,15 +1144,19 @@ CRITICAL FORMATTING RULES:
 2. Start your response directly with [ and end with ]
 3. No explanatory text before or after`;
 
-    const userPrompt = `Create ${params.numberOfCards} high-quality flashcards about: ${params.topic}
+    let userPrompt = `Create ${params.numberOfCards} high-quality flashcards about: ${params.topic}
 
 Return a JSON array where each flashcard object has:
 - front: The term, question, or concept (string)
 - back: The definition, answer, or explanation (string)
 
-Make the flashcards educational, clear, and useful for studying.
+Make the flashcards educational, clear, and useful for studying.`;
 
-Return ONLY the JSON array.`;
+    if (params.additionalInstructions) {
+      userPrompt += `\n\nAdditional Instructions from teacher:\n${params.additionalInstructions}`;
+    }
+
+    userPrompt += `\n\nReturn ONLY the JSON array.`;
 
     const messages: Message[] = [
       { role: 'system', content: systemPrompt },
@@ -1031,6 +1169,73 @@ Return ONLY the JSON array.`;
       type: 'FLASHCARD_GENERATION',
       context,
       metadata: { topic: params.topic, numberOfCards: params.numberOfCards }
+    });
+
+    const cards = this.extractAndRepairJSON(response, true) as Array<{
+      front: string;
+      back: string;
+    }>;
+
+    return cards;
+  }
+
+  // Method to generate flashcards from existing content (test, worksheet, or study guide)
+  async generateFlashcardsFromContent(
+    params: {
+      sourceContent: string;
+      sourceName: string;
+      numberOfCards: number;
+      additionalInstructions?: string;
+    },
+    context?: AIContext
+  ): Promise<Array<{ front: string; back: string }>> {
+    const systemPrompt = `You are an expert educator creating flashcards from existing educational content.
+
+CRITICAL FORMATTING RULES:
+1. Return ONLY raw JSON - DO NOT wrap in markdown code blocks
+2. Start your response directly with [ and end with ]
+3. No explanatory text before or after`;
+
+    let userPrompt = `Create ${params.numberOfCards} high-quality flashcards based on this content from "${params.sourceName}":
+
+---
+${params.sourceContent.slice(0, 10000)}${params.sourceContent.length > 10000 ? '\n\n[Content truncated...]' : ''}
+---
+
+Create flashcards that help students study and memorize the key concepts, facts, and information from this content.
+
+Return a JSON array where each flashcard object has:
+- front: The term, question, or concept (string)
+- back: The definition, answer, or explanation (string)
+
+Make sure the flashcards:
+- Cover the most important concepts from the source material
+- Are accurate to the original content
+- Are clear and easy to understand
+- Are suitable for effective studying`;
+
+    if (params.additionalInstructions) {
+      userPrompt += `\n\nAdditional Instructions from teacher:\n${params.additionalInstructions}`;
+    }
+
+    userPrompt += `\n\nReturn ONLY the JSON array.`;
+
+    const messages: Message[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ];
+
+    const maxTokens = Math.max(2000, Math.min(params.numberOfCards * 150, 8000));
+
+    const response = await this.makeRequest(messages, maxTokens, {
+      type: 'FLASHCARD_GENERATION',
+      context,
+      metadata: { 
+        sourceName: params.sourceName, 
+        numberOfCards: params.numberOfCards,
+        fromExistingContent: true 
+      },
+      creditMultiplier: 2 // Double credits for content-based generation
     });
 
     const cards = this.extractAndRepairJSON(response, true) as Array<{

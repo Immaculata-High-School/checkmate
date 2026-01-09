@@ -1,5 +1,6 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
   import {
     ArrowLeft,
     Users,
@@ -13,7 +14,14 @@
     AlertCircle,
     BookMarked,
     ClipboardList,
-    Library
+    Library,
+    School,
+    RefreshCw,
+    CheckCircle,
+    XCircle,
+    Link2,
+    Loader2,
+    ExternalLink
   } from 'lucide-svelte';
   import type { PageData, ActionData } from './$types';
 
@@ -22,8 +30,110 @@
   let editing = $state(false);
   let name = $state(data.class.name);
   let description = $state(data.class.description || '');
+  
+  // PowerSchool roster sync state
+  let showRosterSyncModal = $state(false);
+  let syncingRoster = $state(false);
+  let rosterMappings = $state<Record<string, number>>({});
+  
+  // On-demand PowerSchool student loading
+  let psStudents = $state<any[]>([]);
+  let loadingPsStudents = $state(false);
+  let psStudentsError = $state<string | null>(null);
 
   const hasAssignments = $derived(data.class.tests.length > 0 || data.class.assignments.length > 0);
+  
+  // Check if roster is synced
+  const rosterSynced = $derived((data as any).rosterMappings?.length > 0);
+  const psLinkedClass = $derived((data as any).powerSchool?.linkedClass);
+
+  // Fetch PowerSchool students on demand when modal opens
+  async function loadPsStudents() {
+    if (psStudents.length > 0 || loadingPsStudents) return; // Already loaded or loading
+    
+    loadingPsStudents = true;
+    psStudentsError = null;
+    
+    try {
+      const response = await fetch(`/api/powerschool/students?classId=${data.class.id}`);
+      const result = await response.json();
+      
+      if (result.error) {
+        psStudentsError = result.error;
+      } else {
+        psStudents = result.students || [];
+      }
+    } catch (e) {
+      psStudentsError = 'Failed to load PowerSchool students';
+      console.error('Error loading PS students:', e);
+    } finally {
+      loadingPsStudents = false;
+    }
+  }
+
+  // Open modal and fetch students
+  async function openRosterSyncModal() {
+    showRosterSyncModal = true;
+    await loadPsStudents();
+    
+    // Initialize mappings from existing data after loading
+    const existingMappings = (data as any).rosterMappings || [];
+    const newMappings: Record<string, number> = {};
+    
+    for (const m of existingMappings) {
+      newMappings[m.studentId] = m.psStudentId;
+    }
+    
+    rosterMappings = newMappings;
+  }
+
+  // Auto-match function that can be called manually
+  function autoMatchStudents() {
+    const newMappings: Record<string, number> = { ...rosterMappings };
+    const usedPsIds = new Set(Object.values(newMappings).filter(Boolean));
+    
+    for (const member of data.class.members) {
+      if (!newMappings[member.user.id]) {
+        // Try to find a match
+        const studentName = member.user.name?.toLowerCase().trim() || '';
+        const nameParts = studentName.split(/\s+/);
+        
+        const match = psStudents.find((ps: any) => {
+          if (usedPsIds.has(ps.id)) return false; // Don't reuse already matched PS students
+          
+          const psName = ps.name?.toLowerCase().trim() || '';
+          const psFirst = ps.first_name?.toLowerCase().trim() || '';
+          const psLast = ps.last_name?.toLowerCase().trim() || '';
+          const psFullName = `${psFirst} ${psLast}`.trim();
+          
+          // Exact match
+          if (psName === studentName || psFullName === studentName) return true;
+          
+          // First + Last name match
+          if (nameParts.length >= 2) {
+            const first = nameParts[0];
+            const last = nameParts[nameParts.length - 1];
+            if ((psFirst === first && psLast === last) || 
+                (psFirst === last && psLast === first)) return true;
+          }
+          
+          // Partial match
+          return psName.includes(studentName) || 
+                 studentName.includes(psFirst) || 
+                 studentName.includes(psLast) ||
+                 psFullName.includes(studentName) ||
+                 studentName.includes(psFullName);
+        });
+        
+        if (match) {
+          newMappings[member.user.id] = match.id;
+          usedPsIds.add(match.id);
+        }
+      }
+    }
+    
+    rosterMappings = newMappings;
+  }
 
   function copyCode() {
     navigator.clipboard.writeText(data.class.joinCode || '');
@@ -111,6 +221,29 @@
       <div class="card">
         <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
           <h2 class="font-semibold text-gray-900">Students ({data.class.members.length})</h2>
+          
+          {#if (data as any).powerSchool?.connected && psLinkedClass}
+            <button 
+              onclick={openRosterSyncModal}
+              class="btn btn-sm {rosterSynced ? 'btn-secondary' : 'btn-primary bg-blue-600 hover:bg-blue-700'}"
+            >
+              <School class="w-4 h-4" />
+              {rosterSynced ? 'Roster Synced' : 'Sync with PowerSchool'}
+              {#if rosterSynced}
+                <CheckCircle class="w-3 h-3 text-green-500" />
+              {/if}
+            </button>
+          {:else if (data as any).powerSchool?.connected}
+            <a href="/teacher/settings" class="btn btn-sm btn-secondary text-gray-500">
+              <School class="w-4 h-4" />
+              Link Class First
+            </a>
+          {:else if (data as any).powerSchool?.configured}
+            <a href="/teacher/settings" class="btn btn-sm btn-secondary text-gray-500">
+              <School class="w-4 h-4" />
+              Connect PowerSchool
+            </a>
+          {/if}
         </div>
 
         {#if data.class.members.length === 0}
@@ -291,6 +424,182 @@
         <form method="POST" action="?/delete" use:enhance class="flex-1">
           <button type="submit" class="btn btn-primary w-full bg-red-600 hover:bg-red-700">
             Delete
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- PowerSchool Roster Sync Modal -->
+{#if showRosterSyncModal}
+  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <!-- Header -->
+      <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+            <School class="w-5 h-5 text-blue-600" />
+          </div>
+          <div>
+            <h2 class="font-semibold text-gray-900">Sync Roster with PowerSchool</h2>
+            <p class="text-sm text-gray-500">Match Checkmate students to PowerSchool students</p>
+          </div>
+        </div>
+        <button onclick={() => (showRosterSyncModal = false)} class="text-gray-400 hover:text-gray-600">
+          <XCircle class="w-6 h-6" />
+        </button>
+      </div>
+      
+      <!-- Content -->
+      <div class="flex-1 overflow-y-auto p-6">
+        {#if loadingPsStudents}
+          <div class="text-center py-8">
+            <Loader2 class="w-12 h-12 text-blue-500 mx-auto mb-3 animate-spin" />
+            <p class="text-gray-500">Loading PowerSchool students...</p>
+          </div>
+        {:else if psStudentsError}
+          <div class="text-center py-8">
+            <AlertCircle class="w-12 h-12 text-red-400 mx-auto mb-3" />
+            <p class="text-red-600">{psStudentsError}</p>
+            <button onclick={loadPsStudents} class="btn btn-secondary mt-4">
+              <RefreshCw class="w-4 h-4" />
+              Retry
+            </button>
+          </div>
+        {:else if psStudents.length === 0}
+          <div class="text-center py-8">
+            <School class="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p class="text-gray-500">No students found in the linked PowerSchool class.</p>
+            <p class="text-sm text-gray-400 mt-1">Make sure students are enrolled in PowerSchool.</p>
+          </div>
+        {:else if data.class.members.length === 0}
+          <div class="text-center py-8">
+            <Users class="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p class="text-gray-500">No students in this Checkmate class yet.</p>
+            <p class="text-sm text-gray-400 mt-1">Share the join code to add students first.</p>
+          </div>
+        {:else}
+          <div class="mb-4 flex items-center justify-between gap-4">
+            <div class="flex-1 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p class="text-sm text-blue-700">
+                <strong>Match each Checkmate student</strong> to their corresponding PowerSchool student. 
+                This is required to sync grades to PowerSchool.
+              </p>
+            </div>
+            <button 
+              type="button"
+              onclick={autoMatchStudents}
+              class="btn btn-secondary whitespace-nowrap"
+            >
+              <RefreshCw class="w-4 h-4" />
+              Auto-Match
+            </button>
+          </div>
+
+          <div class="border rounded-lg overflow-hidden">
+            <table class="w-full">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Checkmate Student</th>
+                  <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Link</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">PowerSchool Student</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-200">
+                {#each data.class.members as member}
+                  {@const isMatched = rosterMappings[member.user.id]}
+                  <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3">
+                      <div class="flex items-center gap-3">
+                        <div class="avatar avatar-sm">{member.user.name?.charAt(0) || '?'}</div>
+                        <div>
+                          <div class="font-medium text-gray-900">{member.user.name}</div>
+                          <div class="text-xs text-gray-500">{member.user.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td class="px-4 py-3 text-center">
+                      {#if isMatched}
+                        <Link2 class="w-5 h-5 text-green-500 mx-auto" />
+                      {:else}
+                        <div class="w-5 h-5 border-2 border-dashed border-gray-300 rounded mx-auto"></div>
+                      {/if}
+                    </td>
+                    <td class="px-4 py-3">
+                      <select
+                        bind:value={rosterMappings[member.user.id]}
+                        class="input w-full text-sm {isMatched ? 'border-green-300 bg-green-50' : ''}"
+                      >
+                        <option value="">-- Select PowerSchool student --</option>
+                        {#each psStudents as psStudent}
+                          <option value={psStudent.id}>
+                            {psStudent.name} {psStudent.student_number ? `(#${psStudent.student_number})` : ''}
+                          </option>
+                        {/each}
+                      </select>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+          
+          <!-- Summary -->
+          <div class="mt-4 flex items-center justify-between text-sm">
+            <div class="text-gray-500">
+              {Object.keys(rosterMappings).filter(k => rosterMappings[k]).length} of {data.class.members.length} students matched
+            </div>
+            {#if Object.keys(rosterMappings).filter(k => rosterMappings[k]).length === data.class.members.length}
+              <div class="text-green-600 flex items-center gap-1">
+                <CheckCircle class="w-4 h-4" />
+                All students matched!
+              </div>
+            {/if}
+          </div>
+        {/if}
+      </div>
+      
+      <!-- Footer -->
+      <div class="px-6 py-4 border-t border-gray-200 flex items-center justify-between bg-gray-50">
+        <button onclick={() => (showRosterSyncModal = false)} class="btn btn-secondary">
+          Cancel
+        </button>
+        
+        <form method="POST" action="?/syncRoster" use:enhance={() => {
+          syncingRoster = true;
+          return async ({ update }) => {
+            syncingRoster = false;
+            showRosterSyncModal = false;
+            await update();
+            await invalidateAll();
+          };
+        }}>
+          <input type="hidden" name="mappings" value={JSON.stringify(
+            Object.entries(rosterMappings)
+              .filter(([_, psId]) => psId)
+              .map(([studentId, psStudentId]) => {
+                const psStudent = psStudents.find((s: any) => s.id === psStudentId);
+                return {
+                  studentId,
+                  psStudentId,
+                  psStudentName: psStudent?.name
+                };
+              })
+          )} />
+          
+          <button 
+            type="submit" 
+            class="btn btn-primary"
+            disabled={syncingRoster || Object.keys(rosterMappings).filter(k => rosterMappings[k]).length === 0}
+          >
+            {#if syncingRoster}
+              <Loader2 class="w-4 h-4 animate-spin" />
+              Saving...
+            {:else}
+              <CheckCircle class="w-4 h-4" />
+              Save Roster Sync
+            {/if}
           </button>
         </form>
       </div>

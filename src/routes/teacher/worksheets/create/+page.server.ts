@@ -36,6 +36,12 @@ export const actions: Actions = {
     const numberOfItems = parseInt(formData.get('numberOfItems')?.toString() || '10');
     const difficulty = formData.get('difficulty')?.toString() as 'easy' | 'medium' | 'hard';
     const itemTypes = formData.getAll('itemTypes').map(t => t.toString());
+    const additionalInstructions = formData.get('additionalInstructions')?.toString().trim() || '';
+    
+    // File upload content
+    const extractedText = formData.get('extractedText')?.toString();
+    const useFileContent = formData.get('useFileContent') === 'true';
+    const sourceContent = useFileContent && extractedText ? extractedText : undefined;
 
     if (!topic) {
       return fail(400, { error: 'Topic is required' });
@@ -55,7 +61,7 @@ export const actions: Actions = {
       data: {
         type: 'WORKSHEET_GENERATION',
         status: 'RUNNING',
-        input: { topic, numberOfItems, difficulty, itemTypes },
+        input: { topic, numberOfItems, difficulty, itemTypes, hasSourceContent: !!sourceContent },
         userId: locals.user!.id,
         orgId: membership?.organizationId,
         startedAt: new Date()
@@ -69,7 +75,9 @@ export const actions: Actions = {
           subject: topic, // Use topic as subject
           numberOfItems,
           itemTypes,
-          difficulty: difficulty || 'medium'
+          difficulty: difficulty || 'medium',
+          sourceContent,
+          additionalInstructions
         },
         { userId: locals.user!.id, orgId: membership?.organizationId }
       );

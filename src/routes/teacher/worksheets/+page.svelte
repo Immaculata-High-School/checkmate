@@ -1,5 +1,15 @@
 <script lang="ts">
-  import { ClipboardList, Plus, Search, Printer } from 'lucide-svelte';
+  import { 
+    ClipboardList, 
+    Plus, 
+    Search, 
+    Printer, 
+    FileText,
+    Calculator,
+    Calendar,
+    MoreVertical,
+    ExternalLink
+  } from 'lucide-svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -10,6 +20,14 @@
       ws.title.toLowerCase().includes(searchQuery.toLowerCase())
     )
   );
+
+  function formatDate(date: string | Date) {
+    return new Date(date).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }
 </script>
 
 <div class="max-w-6xl mx-auto">
@@ -17,7 +35,7 @@
   <div class="flex items-center justify-between mb-6">
     <div>
       <h1 class="text-2xl font-bold text-gray-900">Worksheets</h1>
-      <p class="text-gray-600">Create printable worksheets for your students</p>
+      <p class="text-gray-600">Create and manage printable worksheets for your students</p>
     </div>
     <a href="/teacher/worksheets/create" class="btn btn-primary">
       <Plus class="w-4 h-4" />
@@ -25,9 +43,9 @@
     </a>
   </div>
 
-  <!-- Search -->
-  <div class="mb-6">
-    <div class="relative">
+  <!-- Search & Stats -->
+  <div class="flex items-center gap-4 mb-6">
+    <div class="relative flex-1">
       <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
       <input
         type="text"
@@ -36,21 +54,26 @@
         class="input pl-10"
       />
     </div>
+    <div class="text-sm text-gray-500">
+      {filteredWorksheets.length} worksheet{filteredWorksheets.length !== 1 ? 's' : ''}
+    </div>
   </div>
 
   <!-- Worksheets List -->
   {#if filteredWorksheets.length === 0}
-    <div class="card p-12">
-      <div class="empty-state">
-        <ClipboardList class="empty-state-icon" />
-        <div class="empty-state-title">
+    <div class="bg-white rounded-xl border border-gray-200 p-12">
+      <div class="text-center">
+        <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <ClipboardList class="w-8 h-8 text-slate-400" />
+        </div>
+        <h3 class="text-lg font-medium text-gray-900 mb-1">
           {searchQuery ? 'No worksheets found' : 'No worksheets yet'}
-        </div>
-        <div class="empty-state-text">
+        </h3>
+        <p class="text-gray-500 mb-6">
           {searchQuery ? 'Try a different search term' : 'Create your first worksheet to get started'}
-        </div>
+        </p>
         {#if !searchQuery}
-          <a href="/teacher/worksheets/create" class="btn btn-primary mt-4">
+          <a href="/teacher/worksheets/create" class="btn btn-primary">
             <Plus class="w-4 h-4" />
             Create Worksheet
           </a>
@@ -58,32 +81,70 @@
       </div>
     </div>
   {:else}
-    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {#each filteredWorksheets as worksheet}
-        <a href="/teacher/worksheets/{worksheet.id}" class="card p-5 hover:border-blue-300 transition-colors block">
-          <div class="flex items-start justify-between mb-4">
-            <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <ClipboardList class="w-6 h-6 text-green-600" />
-            </div>
-            <button class="btn btn-ghost btn-sm">
-              <Printer class="w-4 h-4" />
-            </button>
-          </div>
-
-          <h3 class="font-semibold text-gray-900 mb-1">{worksheet.title}</h3>
-          {#if worksheet.description}
-            <p class="text-sm text-gray-500 mb-3 line-clamp-2">{worksheet.description}</p>
-          {/if}
-
-          <div class="text-sm text-gray-500">
-            {worksheet._count.items} items
-          </div>
-
-          <div class="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">
-            Created {new Date(worksheet.createdAt).toLocaleDateString()}
-          </div>
-        </a>
-      {/each}
+    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <table class="w-full">
+        <thead class="bg-slate-50 border-b border-gray-200">
+          <tr>
+            <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Worksheet</th>
+            <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Items</th>
+            <th class="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+            <th class="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {#each filteredWorksheets as worksheet}
+            <tr class="hover:bg-slate-50 transition-colors">
+              <td class="px-6 py-4">
+                <a href="/teacher/worksheets/{worksheet.id}" class="block group">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <FileText class="w-5 h-5 text-slate-600" />
+                    </div>
+                    <div>
+                      <div class="font-medium text-gray-900 group-hover:text-blue-600 transition-colors">
+                        {worksheet.title}
+                      </div>
+                      {#if worksheet.description}
+                        <p class="text-sm text-gray-500 line-clamp-1">{worksheet.description}</p>
+                      {/if}
+                    </div>
+                  </div>
+                </a>
+              </td>
+              <td class="px-6 py-4">
+                <div class="flex items-center gap-1.5 text-sm text-gray-600">
+                  <Calculator class="w-4 h-4 text-gray-400" />
+                  {worksheet._count.items} items
+                </div>
+              </td>
+              <td class="px-6 py-4">
+                <div class="flex items-center gap-1.5 text-sm text-gray-500">
+                  <Calendar class="w-4 h-4 text-gray-400" />
+                  {formatDate(worksheet.createdAt)}
+                </div>
+              </td>
+              <td class="px-6 py-4 text-right">
+                <div class="flex items-center justify-end gap-1">
+                  <a 
+                    href="/teacher/worksheets/{worksheet.id}" 
+                    class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="View worksheet"
+                  >
+                    <ExternalLink class="w-4 h-4" />
+                  </a>
+                  <button 
+                    class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Print worksheet"
+                    onclick={() => window.open(`/teacher/worksheets/${worksheet.id}`, '_blank')}
+                  >
+                    <Printer class="w-4 h-4" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
     </div>
   {/if}
 </div>

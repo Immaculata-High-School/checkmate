@@ -10,7 +10,10 @@
     FileText,
     Save,
     CheckCircle2,
-    BookOpen
+    BookOpen,
+    Upload,
+    X,
+    File as FileIcon
   } from 'lucide-svelte';
   import type { ActionData, PageData } from './$types';
 
@@ -38,6 +41,13 @@
   let selectedClassId = $state('');
   let totalPoints = $state<number | null>(null);
 
+  // File upload state
+  let uploadedFile = $state<globalThis.File | null>(null);
+  let extractedText = $state('');
+  let extracting = $state(false);
+  let extractError = $state('');
+  let useFileContent = $state(false);
+
   // Manual form values
   let manualTitle = $state('');
   let manualDescription = $state('');
@@ -47,6 +57,60 @@
   let manualQuestions = $state<{ type: string; question: string; options: string[]; correctAnswer: string; points: number; programmingLanguage: string }[]>([
     { type: 'MULTIPLE_CHOICE', question: '', options: ['', '', '', ''], correctAnswer: '', points: 1, programmingLanguage: 'python' }
   ]);
+
+  // File upload functions
+  async function handleFileUpload(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    // Validate file
+    const maxSize = 1 * 1024 * 1024; // 1MB
+    if (file.size > maxSize) {
+      extractError = 'File too large. Maximum size is 1MB.';
+      return;
+    }
+
+    if (file.type !== 'application/pdf') {
+      extractError = 'Only PDF files are supported.';
+      return;
+    }
+
+    uploadedFile = file;
+    extractError = '';
+    extracting = true;
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/extract-text', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to extract text');
+      }
+
+      const result = await response.json();
+      extractedText = result.text;
+      useFileContent = true;
+    } catch (err) {
+      extractError = err instanceof Error ? err.message : 'Failed to extract text from file';
+      uploadedFile = null;
+    } finally {
+      extracting = false;
+    }
+  }
+
+  function removeFile() {
+    uploadedFile = null;
+    extractedText = '';
+    useFileContent = false;
+    extractError = '';
+  }
 
   // Calculate current total points for manual questions
   let manualCurrentPoints = $derived(manualQuestions.reduce((sum, q) => sum + q.points, 0));
@@ -215,6 +279,90 @@
             placeholder="e.g., World War II, Photosynthesis, Algebra equations..."
           />
           <p class="text-sm text-gray-500 mt-2">Be specific for better results.</p>
+        </div>
+
+        <!-- File Upload Section -->
+        <div class="card p-6">
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            Upload Source Material (Optional)
+          </label>
+          <p class="text-sm text-gray-500 mb-4">
+            Upload a PDF with content to base the test on. AI will extract and use the text to generate questions. 
+            <span class="text-amber-600 font-medium">Beta Feature</span>
+          </p>
+
+          {#if !uploadedFile}
+            <label
+              class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors"
+            >
+              <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                <Upload class="w-8 h-8 text-gray-400 mb-2" />
+                <p class="text-sm text-gray-600">
+                  <span class="font-medium text-blue-600">Click to upload</span> or drag and drop
+                </p>
+                <p class="text-xs text-gray-500 mt-1">PDF only, max 1MB, 3 pages</p>
+              </div>
+              <input
+                type="file"
+                class="hidden"
+                accept=".pdf,application/pdf"
+                onchange={handleFileUpload}
+              />
+            </label>
+          {:else}
+            <div class="border border-gray-200 rounded-lg p-4">
+              <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                    <FileIcon class="w-5 h-5 text-red-600" />
+                  </div>
+                  <div>
+                    <p class="font-medium text-gray-900 text-sm">{uploadedFile.name}</p>
+                    <p class="text-xs text-gray-500">{(uploadedFile.size / 1024).toFixed(1)} KB</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onclick={removeFile}
+                  class="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                >
+                  <X class="w-5 h-5" />
+                </button>
+              </div>
+
+              {#if extracting}
+                <div class="flex items-center gap-2 text-sm text-blue-600">
+                  <Loader2 class="w-4 h-4 animate-spin" />
+                  Extracting text from file...
+                </div>
+              {:else if extractedText}
+                <div class="bg-gray-50 rounded-lg p-3 max-h-40 overflow-y-auto">
+                  <p class="text-xs text-gray-500 mb-2 font-medium">Extracted Content Preview:</p>
+                  <p class="text-sm text-gray-700 whitespace-pre-wrap line-clamp-6">{extractedText.slice(0, 500)}{extractedText.length > 500 ? '...' : ''}</p>
+                </div>
+                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    bind:checked={useFileContent}
+                    class="w-4 h-4 rounded text-blue-600"
+                  />
+                  <span class="text-sm text-gray-700">Use this content to generate questions</span>
+                </label>
+              {/if}
+            </div>
+          {/if}
+
+          {#if extractError}
+            <div class="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
+              <AlertCircle class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+              <p class="text-sm text-red-700">{extractError}</p>
+            </div>
+          {/if}
+
+          {#if useFileContent && extractedText}
+            <input type="hidden" name="extractedText" value={extractedText} />
+            <input type="hidden" name="useFileContent" value="true" />
+          {/if}
         </div>
 
         <div class="grid md:grid-cols-2 gap-6">

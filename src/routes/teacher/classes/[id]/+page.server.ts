@@ -1,5 +1,6 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import * as powerSchool from '$lib/server/powerschool';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -39,7 +40,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
             select: { id: true, title: true }
           }
         }
-      }
+      },
+      powerSchoolMapping: true,
+      powerSchoolStudentMappings: true
     }
   });
 
@@ -51,7 +54,29 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     throw error(403, 'Not authorized');
   }
 
-  return { class: cls };
+  // Get PowerSchool connection status (without fetching students - that's done on demand)
+  const psStatus = await powerSchool.getConnectionStatus(locals.user!.id);
+  const psConfig = powerSchool.getConfig();
+  
+  // Just check if class is linked - don't fetch students yet
+  let linkedClass: any = null;
+  if (psStatus.connected && cls.powerSchoolMapping) {
+    linkedClass = {
+      sectionId: cls.powerSchoolMapping.sectionId,
+      sectionName: cls.powerSchoolMapping.sectionName
+    };
+  }
+
+  return { 
+    class: cls,
+    rosterMappings: cls.powerSchoolStudentMappings,
+    powerSchool: {
+      configured: psConfig.isConfigured,
+      connected: psStatus.connected,
+      linkedClass
+    }
+    // Note: psStudents is now fetched on demand via /api/powerschool/students
+  };
 };
 
 export const actions: Actions = {
@@ -156,5 +181,58 @@ export const actions: Actions = {
     });
 
     throw redirect(302, '/teacher/classes');
+  },
+
+  syncRoster: async ({ params, request, locals }) => {
+    const formData = await request.formData();
+    const mappingsJson = formData.get('mappings')?.toString();
+
+    if (!mappingsJson) {
+      return fail(400, { error: 'Mappings required' });
+    }
+
+    const cls = await prisma.class.findUnique({
+      where: { id: params.id }
+    });
+
+    if (!cls || cls.teacherId !== locals.user!.id) {
+      return fail(403, { error: 'Not authorized' });
+    }
+
+    try {
+      const mappings = JSON.parse(mappingsJson) as Array<{
+        studentId: string;
+        psStudentId: number;
+        psStudentName?: string;
+      }>;
+
+      // Delete existing mappings for this class
+      await prisma.powerSchoolStudentMapping.deleteMany({
+        where: { classId: params.id }
+      });
+
+      // Create new mappings
+      if (mappings.length > 0) {
+        await prisma.powerSchoolStudentMapping.createMany({
+          data: mappings.map(m => ({
+            classId: params.id,
+            studentId: m.studentId,
+            psStudentId: m.psStudentId,
+            psStudentName: m.psStudentName,
+            createdBy: locals.user!.id
+          }))
+        });
+      }
+
+      return { 
+        syncSuccess: true, 
+        message: `Synced ${mappings.length} student${mappings.length !== 1 ? 's' : ''} with PowerSchool` 
+      };
+    } catch (err) {
+      console.error('Sync roster error:', err);
+      return fail(500, { 
+        error: err instanceof Error ? err.message : 'Failed to sync roster' 
+      });
+    }
   }
 };

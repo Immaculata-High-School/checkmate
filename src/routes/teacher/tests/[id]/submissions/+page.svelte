@@ -42,10 +42,8 @@
   let showClassFeedback = $state(false);
   let showBonusModal = $state(false);
   let showPowerSchoolModal = $state(false);
-  let showMappingModal = $state(false);
   let showPsJobStartedModal = $state(false);
   let psReleasing = $state(false);
-  let savingMappings = $state(false);
   let bonusAmount = $state(0);
   let bonusTarget = $state<'selected' | 'all' | 'single'>('selected');
   let bonusSubmissionId = $state<string | null>(null);
@@ -60,12 +58,6 @@
   let psDueDate = $state(new Date().toISOString().split('T')[0]);
   let psForceRerelease = $state(false);
   let psMarkMissing = $state(false);
-  
-  // Student mapping state
-  let unmatchedStudents = $state<Array<{studentId: string; studentName: string; studentEmail: string}>>([]);
-  let psStudentsList = $state<Array<{id: number; name: string; first_name: string; last_name: string}>>([]);
-  let studentMappings = $state<Record<string, number>>({});
-  let mappingClassId = $state('');
 
   // PowerSchool stats - computed from submissions
   let psGradedCount = $derived(
@@ -75,15 +67,12 @@
     data.submissions.filter((s: any) => (s as any).powerSchoolRelease?.success).length
   );
   
-  // Check if form returned unmatched students
-  $effect(() => {
-    if ((form as any)?.unmatchedStudents?.length > 0 && (form as any)?.psStudents?.length > 0) {
-      unmatchedStudents = (form as any).unmatchedStudents;
-      psStudentsList = (form as any).psStudents;
-      mappingClassId = (form as any).classId || '';
-      studentMappings = {};
-      showMappingModal = true;
-    }
+  // Check if selected class has roster synced
+  let selectedClassRosterSynced = $derived(() => {
+    if (!psSelectedClass) return false;
+    const linkedClasses = (data as any).powerSchool?.linkedClasses || [];
+    const cls = linkedClasses.find((c: any) => c.id === psSelectedClass);
+    return cls?.rosterSynced ?? false;
   });
 
   function applyFilters() {
@@ -1028,8 +1017,8 @@
           >
             <option value="">Select a class...</option>
             {#each (data as any).powerSchool.linkedClasses as cls}
-              <option value={cls.id}>
-                {cls.name} → {cls.psSection}
+              <option value={cls.id} disabled={!cls.rosterSynced}>
+                {cls.name} → {cls.psSection} {cls.rosterSynced ? `(${cls.mappedStudents} synced)` : '⚠️ Roster not synced'}
               </option>
             {/each}
           </select>
@@ -1037,6 +1026,17 @@
             <p class="text-xs text-amber-600 mt-1">
               No linked classes found. <a href="/teacher/settings" class="underline">Link a class first</a>
             </p>
+          {:else}
+            {@const selectedClassData = (data as any).powerSchool.linkedClasses.find((c: any) => c.id === psSelectedClass)}
+            {#if psSelectedClass && selectedClassData && !selectedClassData.rosterSynced}
+              <div class="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+                <AlertCircle class="w-4 h-4 inline mr-1" />
+                <strong>Roster not synced!</strong> You must sync the roster before releasing grades.
+                <a href="/teacher/classes/{psSelectedClass}" class="underline font-medium ml-1">
+                  Sync Roster →
+                </a>
+              </div>
+            {/if}
           {/if}
         </div>
 
@@ -1127,6 +1127,14 @@
         </div>
 
         <!-- Summary -->
+        {#if psSelectedClass && !selectedClassRosterSynced()}
+          <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4">
+            <p class="text-sm text-amber-800 flex items-center gap-2">
+              <AlertTriangle class="w-4 h-4 flex-shrink-0" />
+              <span>This class hasn't synced its roster with PowerSchool. <a href="/teacher/classes/{psSelectedClass}" class="underline font-medium">Sync roster first →</a></span>
+            </p>
+          </div>
+        {/if}
         <div class="p-3 bg-gray-50 rounded-lg mb-4">
           <p class="text-sm text-gray-600">
             {#if psForceRerelease}
@@ -1154,7 +1162,7 @@
           <button 
             type="submit" 
             class="btn btn-primary flex-1 bg-blue-600 hover:bg-blue-700"
-            disabled={psReleasing || !psSelectedClass || !psSelectedCategory || (psGradedCount === 0 && !psForceRerelease)}
+            disabled={psReleasing || !psSelectedClass || !psSelectedCategory || (psGradedCount === 0 && !psForceRerelease) || !selectedClassRosterSynced()}
           >
             {#if psReleasing}
               <Loader2 class="w-4 h-4 animate-spin" />
@@ -1166,127 +1174,6 @@
           </button>
         </div>
       </form>
-    </div>
-  </div>
-{/if}
-
-<!-- Student Mapping Modal -->
-{#if showMappingModal}
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-    <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-hidden flex flex-col">
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
-            <Link class="w-5 h-5 text-amber-600" />
-          </div>
-          <div>
-            <h3 class="font-semibold text-gray-900">Map Students to PowerSchool</h3>
-            <p class="text-sm text-gray-500">{unmatchedStudents.length} student{unmatchedStudents.length !== 1 ? 's' : ''} couldn't be automatically matched</p>
-          </div>
-        </div>
-        <button onclick={() => (showMappingModal = false)} class="text-gray-400 hover:text-gray-600">
-          <X class="w-5 h-5" />
-        </button>
-      </div>
-
-      <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-sm text-amber-800">
-        <p><strong>Why am I seeing this?</strong> These Checkmate students couldn't be automatically matched to PowerSchool students by name or email. Please manually select the correct PowerSchool student for each.</p>
-      </div>
-
-      <div class="flex-1 overflow-y-auto mb-4">
-        <table class="w-full text-sm">
-          <thead class="bg-gray-50 sticky top-0">
-            <tr>
-              <th class="text-left p-2 font-medium text-gray-700">Checkmate Student</th>
-              <th class="text-left p-2 font-medium text-gray-700">PowerSchool Student</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y">
-            {#each unmatchedStudents as student}
-              <tr class="hover:bg-gray-50">
-                <td class="p-2">
-                  <div class="font-medium">{student.studentName}</div>
-                  <div class="text-xs text-gray-500">{student.studentEmail}</div>
-                </td>
-                <td class="p-2">
-                  <select 
-                    class="input input-sm w-full"
-                    value={studentMappings[student.studentId] || ''}
-                    onchange={(e) => {
-                      const val = (e.target as HTMLSelectElement).value;
-                      if (val) {
-                        studentMappings[student.studentId] = parseInt(val);
-                      } else {
-                        delete studentMappings[student.studentId];
-                      }
-                      studentMappings = {...studentMappings};
-                    }}
-                  >
-                    <option value="">-- Select Student --</option>
-                    {#each psStudentsList as psStudent}
-                      <option value={psStudent.id}>
-                        {psStudent.name} ({psStudent.first_name} {psStudent.last_name})
-                      </option>
-                    {/each}
-                  </select>
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="border-t pt-4">
-        <div class="flex items-center justify-between mb-3">
-          <span class="text-sm text-gray-600">
-            {Object.keys(studentMappings).length} of {unmatchedStudents.length} mapped
-          </span>
-        </div>
-        
-        <form method="POST" action="?/saveStudentMappings" use:enhance={() => {
-          savingMappings = true;
-          return async ({ result, update }) => {
-            savingMappings = false;
-            if (result.type === 'success') {
-              showMappingModal = false;
-              await update();
-            } else {
-              await update();
-            }
-          };
-        }}>
-          <input type="hidden" name="classId" value={mappingClassId} />
-          <input type="hidden" name="mappings" value={JSON.stringify(
-            Object.entries(studentMappings).map(([studentId, psStudentId]) => {
-              const psStudent = psStudentsList.find(s => s.id === psStudentId);
-              return {
-                studentId,
-                psStudentId,
-                psStudentName: psStudent?.name
-              };
-            })
-          )} />
-          
-          <div class="flex gap-3">
-            <button type="button" onclick={() => (showMappingModal = false)} class="btn btn-secondary flex-1">
-              Cancel
-            </button>
-            <button 
-              type="submit" 
-              class="btn btn-primary flex-1 bg-amber-600 hover:bg-amber-700"
-              disabled={savingMappings || Object.keys(studentMappings).length === 0}
-            >
-              {#if savingMappings}
-                <Loader2 class="w-4 h-4 animate-spin" />
-                Saving...
-              {:else}
-                <Save class="w-4 h-4" />
-                Save Mappings & Retry
-              {/if}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   </div>
 {/if}

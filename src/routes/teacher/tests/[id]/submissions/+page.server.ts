@@ -88,7 +88,9 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
       include: {
         class: {
           include: {
-            powerSchoolMapping: true
+            powerSchoolMapping: true,
+            powerSchoolStudentMappings: true,
+            _count: { select: { members: true } }
           }
         }
       }
@@ -102,7 +104,10 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
         psSection: tc.class.powerSchoolMapping!.sectionName,
         psSectionId: tc.class.powerSchoolMapping!.sectionId,
         psCategory: tc.class.powerSchoolMapping!.defaultCategoryName,
-        psCategoryId: tc.class.powerSchoolMapping!.defaultCategoryId
+        psCategoryId: tc.class.powerSchoolMapping!.defaultCategoryId,
+        rosterSynced: tc.class.powerSchoolStudentMappings.length > 0,
+        mappedStudents: tc.class.powerSchoolStudentMappings.length,
+        totalStudents: tc.class._count.members
       }));
 
     // Get categories
@@ -905,39 +910,5 @@ export const actions: Actions = {
       jobId: job.id,
       message: "We're syncing your grades to PowerSchool! Check back later or view Compute Jobs for progress."
     };
-  },
-
-  saveStudentMappings: async ({ request, locals }) => {
-    const formData = await request.formData();
-    const classId = formData.get('classId')?.toString();
-    const mappingsJson = formData.get('mappings')?.toString();
-
-    if (!classId || !mappingsJson) {
-      return fail(400, { error: 'Class ID and mappings required' });
-    }
-
-    try {
-      const mappings = JSON.parse(mappingsJson) as Array<{
-        studentId: string;
-        psStudentId: number;
-        psStudentName?: string;
-      }>;
-
-      const result = await powerSchool.saveStudentMappings(
-        locals.user!.id,
-        classId,
-        mappings
-      );
-
-      return {
-        mappingSaved: true,
-        message: `Saved ${result.saved} student mapping${result.saved !== 1 ? 's' : ''}. You can now retry releasing grades.`
-      };
-    } catch (err) {
-      console.error('Save mappings error:', err);
-      return fail(500, {
-        error: err instanceof Error ? err.message : 'Failed to save mappings'
-      });
-    }
   }
 };
