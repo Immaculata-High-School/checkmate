@@ -20,6 +20,7 @@
   } from 'lucide-svelte';
   import ChessKing from '$lib/components/ChessKing.svelte';
   import OrgDisabled from '$lib/components/OrgDisabled.svelte';
+  import AIAssistant from '$lib/components/AIAssistant.svelte';
   import type { LayoutData } from './$types';
   import NotificationBell from '$lib/components/NotificationBell.svelte';
   import LoadingBar from '$lib/components/LoadingBar.svelte';
@@ -195,4 +196,7 @@
     </main>
   </div>
 </div>
+
+<!-- Global AI Assistant -->
+<AIAssistant />
 {/if}

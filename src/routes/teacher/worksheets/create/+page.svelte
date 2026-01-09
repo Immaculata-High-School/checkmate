@@ -1,5 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { onMount } from 'svelte';
+  import { assistantStore } from '$lib/stores/assistant';
   import {
     ArrowLeft,
     ClipboardList,
@@ -55,6 +57,30 @@
   let manualItems = $state<{ type: string; content: string; answer: string }[]>([
     { type: 'PROBLEM', content: '', answer: '' }
   ]);
+
+  // Check for prefill data from AI assistant
+  onMount(() => {
+    const unsubscribe = assistantStore.subscribe(state => {
+      if (state.prefill && state.prefill.type === 'worksheet') {
+        const prefillData = state.prefill.data;
+        if (prefillData.topic) topic = prefillData.topic;
+        if (prefillData.numberOfItems) numberOfItems = prefillData.numberOfItems;
+        if (prefillData.difficulty) difficulty = prefillData.difficulty;
+        if (prefillData.itemTypes) selectedTypes = prefillData.itemTypes;
+        if (prefillData.additionalInstructions) additionalInstructions = prefillData.additionalInstructions;
+        
+        // Switch to AI mode if prefill has topic
+        if (prefillData.topic) {
+          mode = 'ai';
+        }
+        
+        // Clear the prefill after applying
+        assistantStore.clearPrefill();
+      }
+    });
+    
+    return unsubscribe;
+  });
 
   const itemTypes = [
     { value: 'PROBLEM', label: 'Math Problem', icon: Calculator, description: 'Numerical or equation problems' },

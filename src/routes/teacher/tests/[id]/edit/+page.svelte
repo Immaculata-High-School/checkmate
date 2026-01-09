@@ -7,7 +7,12 @@
     Trash2,
     AlertCircle,
     Save,
-    GripVertical
+    GripVertical,
+    Sparkles,
+    Send,
+    Loader2,
+    MessageSquare,
+    X
   } from 'lucide-svelte';
   import type { PageData, ActionData } from './$types';
 
@@ -26,6 +31,13 @@
       aiGenerated: q.aiGenerated
     }))
   );
+
+  // AI Assistant state
+  let assistantOpen = $state(false);
+  let assistantInput = $state('');
+  let assistantLoading = $state(false);
+  let assistantError = $state('');
+  let assistantMessages = $state<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
 
   const questionTypes = [
     { value: 'MULTIPLE_CHOICE', label: 'Multiple Choice' },
@@ -94,6 +106,59 @@
       opts[optionIndex] = value;
       q.options = opts;
       questions = [...questions];
+    }
+  }
+
+  async function sendAssistantMessage() {
+    if (!assistantInput.trim() || assistantLoading) return;
+
+    const userMessage = assistantInput.trim();
+    assistantInput = '';
+    assistantError = '';
+    assistantLoading = true;
+
+    // Add user message to chat
+    assistantMessages = [...assistantMessages, { role: 'user', content: userMessage }];
+
+    try {
+      const response = await fetch('/api/test-assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'edit',
+          instruction: userMessage,
+          questions: questions,
+          testTitle: title,
+          testDescription: description,
+          testId: data.test.id
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to process request');
+      }
+
+      const result = await response.json();
+      
+      // Update questions with the AI's modifications
+      questions = result.questions;
+      
+      // Add assistant response to chat
+      assistantMessages = [...assistantMessages, { role: 'assistant', content: result.explanation }];
+    } catch (err) {
+      assistantError = err instanceof Error ? err.message : 'Something went wrong';
+      // Remove the user message on error
+      assistantMessages = assistantMessages.slice(0, -1);
+    } finally {
+      assistantLoading = false;
+    }
+  }
+
+  function handleAssistantKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendAssistantMessage();
     }
   }
 </script>
@@ -346,4 +411,98 @@
       </button>
     </div>
   </form>
+</div>
+
+<!-- AI Assistant Panel -->
+<div class="fixed bottom-4 right-4 z-50">
+  {#if !assistantOpen}
+    <button
+      onclick={() => assistantOpen = true}
+      class="w-14 h-14 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-105"
+      title="AI Assistant"
+    >
+      <Sparkles class="w-6 h-6" />
+    </button>
+  {:else}
+    <div class="w-96 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col" style="max-height: 500px;">
+      <!-- Header -->
+      <div class="bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-2 text-white">
+          <Sparkles class="w-5 h-5" />
+          <span class="font-semibold">AI Assistant</span>
+        </div>
+        <button
+          onclick={() => assistantOpen = false}
+          class="text-white/80 hover:text-white transition-colors"
+        >
+          <X class="w-5 h-5" />
+        </button>
+      </div>
+
+      <!-- Messages -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-3 min-h-[200px] max-h-[300px]">
+        {#if assistantMessages.length === 0}
+          <div class="text-center text-gray-500 text-sm py-8">
+            <MessageSquare class="w-8 h-8 mx-auto mb-2 text-gray-300" />
+            <p class="font-medium">How can I help?</p>
+            <p class="text-xs mt-1">Try things like:</p>
+            <ul class="text-xs mt-2 space-y-1 text-left max-w-[200px] mx-auto">
+              <li>• "Add 3 more questions about photosynthesis"</li>
+              <li>• "Delete question 5"</li>
+              <li>• "Make question 2 easier"</li>
+              <li>• "Change all points to 5"</li>
+            </ul>
+          </div>
+        {:else}
+          {#each assistantMessages as message}
+            <div class="flex {message.role === 'user' ? 'justify-end' : 'justify-start'}">
+              <div class="max-w-[85%] rounded-lg px-3 py-2 text-sm {message.role === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800'}">
+                {message.content}
+              </div>
+            </div>
+          {/each}
+          {#if assistantLoading}
+            <div class="flex justify-start">
+              <div class="bg-gray-100 rounded-lg px-3 py-2 text-sm text-gray-500 flex items-center gap-2">
+                <Loader2 class="w-4 h-4 animate-spin" />
+                Thinking...
+              </div>
+            </div>
+          {/if}
+        {/if}
+      </div>
+
+      <!-- Error -->
+      {#if assistantError}
+        <div class="px-4 py-2 bg-red-50 border-t border-red-100">
+          <p class="text-sm text-red-600 flex items-center gap-2">
+            <AlertCircle class="w-4 h-4" />
+            {assistantError}
+          </p>
+        </div>
+      {/if}
+
+      <!-- Input -->
+      <div class="border-t border-gray-200 p-3">
+        <div class="flex gap-2">
+          <input
+            type="text"
+            bind:value={assistantInput}
+            onkeydown={handleAssistantKeydown}
+            placeholder="Ask AI to modify your test..."
+            class="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            disabled={assistantLoading}
+          />
+          <button
+            onclick={sendAssistantMessage}
+            disabled={!assistantInput.trim() || assistantLoading}
+            class="px-3 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white rounded-lg transition-colors"
+          >
+            <Send class="w-4 h-4" />
+          </button>
+        </div>
+        <p class="text-xs text-gray-400 mt-2 text-center">Each message uses 1 AI request</p>
+      </div>
+    </div>
+  {/if}
 </div>

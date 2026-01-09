@@ -1,5 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { onMount } from 'svelte';
+  import { assistantStore } from '$lib/stores/assistant';
   import {
     Sparkles,
     Plus,
@@ -47,6 +49,33 @@
   let extracting = $state(false);
   let extractError = $state('');
   let useFileContent = $state(false);
+
+  // Check for prefill data from AI assistant
+  onMount(() => {
+    const unsubscribe = assistantStore.subscribe(state => {
+      if (state.prefill && state.prefill.type === 'test') {
+        const prefillData = state.prefill.data;
+        if (prefillData.topic) topic = prefillData.topic;
+        if (prefillData.numberOfQuestions) numberOfQuestions = prefillData.numberOfQuestions;
+        if (prefillData.difficulty) difficulty = prefillData.difficulty;
+        if (prefillData.questionTypes) selectedTypes = prefillData.questionTypes;
+        if (prefillData.additionalInstructions) additionalInstructions = prefillData.additionalInstructions;
+        if (prefillData.title) testTitle = prefillData.title;
+        if (prefillData.description) testDescription = prefillData.description;
+        
+        // Switch to AI mode if prefill has topic
+        if (prefillData.topic) {
+          mode = 'ai';
+        }
+        
+        // Clear the prefill after applying
+        assistantStore.clearPrefill();
+      }
+    });
+    
+    return unsubscribe;
+  });
+
 
   // Manual form values
   let manualTitle = $state('');
@@ -372,7 +401,7 @@
               name="numberOfQuestions"
               type="range"
               min="5"
-              max="30"
+              max="40"
               bind:value={numberOfQuestions}
               class="w-full"
             />

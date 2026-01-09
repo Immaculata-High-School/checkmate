@@ -1,5 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { onMount } from 'svelte';
+  import { assistantStore } from '$lib/stores/assistant';
   import { BookOpen, Sparkles, FileText, ArrowLeft, Loader2, AlertCircle, PenLine, Wand2, CheckCircle } from 'lucide-svelte';
   import type { PageData, ActionData } from './$types';
 
@@ -11,6 +13,22 @@
   let title = $state('');
   let content = $state('');
   let additionalInstructions = $state('');
+
+  // Check for prefill data from AI assistant
+  onMount(() => {
+    const unsubscribe = assistantStore.subscribe(state => {
+      if (state.prefill && state.prefill.type === 'study-guide') {
+        const prefillData = state.prefill.data;
+        if (prefillData.topic) title = prefillData.topic;
+        if (prefillData.additionalInstructions) additionalInstructions = prefillData.additionalInstructions;
+        
+        // Clear the prefill after applying
+        assistantStore.clearPrefill();
+      }
+    });
+    
+    return unsubscribe;
+  });
 
   const selectedTest = $derived(data.tests.find(t => t.id === selectedTestId));
 </script>

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { onMount } from 'svelte';
+  import { assistantStore } from '$lib/stores/assistant';
   import {
     ArrowLeft,
     BookOpen,
@@ -55,6 +57,28 @@
   let manualCards = $state<{ front: string; back: string }[]>([
     { front: '', back: '' }
   ]);
+
+  // Check for prefill data from AI assistant
+  onMount(() => {
+    const unsubscribe = assistantStore.subscribe(state => {
+      if (state.prefill && state.prefill.type === 'flashcards') {
+        const prefillData = state.prefill.data;
+        if (prefillData.topic) topic = prefillData.topic;
+        if (prefillData.numberOfCards) numberOfCards = prefillData.numberOfCards;
+        if (prefillData.additionalInstructions) additionalInstructions = prefillData.additionalInstructions;
+        
+        // Switch to AI mode if prefill has topic
+        if (prefillData.topic) {
+          mode = 'ai';
+        }
+        
+        // Clear the prefill after applying
+        assistantStore.clearPrefill();
+      }
+    });
+    
+    return unsubscribe;
+  });
 
   // Get available content based on selected type
   const availableContent = $derived(() => {

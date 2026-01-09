@@ -161,7 +161,7 @@ export class ShuttleAIService {
 
   private async makeRequest(
     messages: Message[],
-    maxTokens: number = 2000,
+    maxTokens: number = 4000,
     options?: {
       model?: string;
       type?: string;
@@ -398,6 +398,105 @@ export class ShuttleAIService {
       programmingLanguage?: string | null;
     }>
   > {
+    const CHUNK_SIZE = 25; // Max questions per request due to 4096 output token limit
+    const needsChunking = params.numberOfQuestions > CHUNK_SIZE;
+    
+    // If we need chunking, split into multiple requests
+    if (needsChunking) {
+      const firstBatchSize = CHUNK_SIZE;
+      const secondBatchSize = params.numberOfQuestions - CHUNK_SIZE;
+      
+      // Calculate points distribution if totalPoints specified
+      let firstBatchPoints: number | null = null;
+      let secondBatchPoints: number | null = null;
+      if (params.totalPoints && params.totalPoints > 0) {
+        firstBatchPoints = Math.round((params.totalPoints * firstBatchSize) / params.numberOfQuestions);
+        secondBatchPoints = params.totalPoints - firstBatchPoints;
+      }
+      
+      // Generate first batch
+      const firstBatch = await this.generateTestQuestionsChunk({
+        ...params,
+        numberOfQuestions: firstBatchSize,
+        totalPoints: firstBatchPoints,
+        existingQuestions: [],
+        batchNumber: 1,
+        totalBatches: 2
+      }, context);
+      
+      // Generate second batch with context of existing questions
+      const secondBatch = await this.generateTestQuestionsChunk({
+        ...params,
+        numberOfQuestions: secondBatchSize,
+        totalPoints: secondBatchPoints,
+        existingQuestions: firstBatch,
+        batchNumber: 2,
+        totalBatches: 2
+      }, context);
+      
+      // Combine batches
+      let allQuestions = [...firstBatch, ...secondBatch];
+      
+      // Final point redistribution if needed
+      if (params.totalPoints && params.totalPoints > 0 && allQuestions.length > 0) {
+        const currentTotal = allQuestions.reduce((sum, q) => sum + (q.points || 0), 0);
+        if (currentTotal !== params.totalPoints) {
+          const scaleFactor = params.totalPoints / currentTotal;
+          let distributed = 0;
+          allQuestions.forEach((q, i) => {
+            if (i === allQuestions.length - 1) {
+              q.points = params.totalPoints! - distributed;
+            } else {
+              q.points = Math.round((q.points || 1) * scaleFactor);
+              distributed += q.points;
+            }
+          });
+        }
+      }
+      
+      return allQuestions;
+    }
+    
+    // Single request for <= 25 questions
+    return this.generateTestQuestionsChunk({
+      ...params,
+      existingQuestions: [],
+      batchNumber: 1,
+      totalBatches: 1
+    }, context);
+  }
+
+  private async generateTestQuestionsChunk(
+    params: {
+      topic: string;
+      numberOfQuestions: number;
+      questionTypes: string[];
+      difficulty: 'easy' | 'medium' | 'hard';
+      additionalInstructions?: string;
+      totalPoints?: number | null;
+      pointAllocation?: {
+        strategy: 'equal' | 'difficulty' | 'length' | 'type';
+        harderQuestionsMorePoints?: boolean;
+        longerQuestionsMorePoints?: boolean;
+        typeWeights?: Record<string, number>;
+        customInstructions?: string;
+      };
+      sourceContent?: string;
+      existingQuestions: Array<{ type: QuestionType; question: string }>;
+      batchNumber: number;
+      totalBatches: number;
+    },
+    context?: AIContext
+  ): Promise<
+    Array<{
+      type: QuestionType;
+      question: string;
+      options: string[] | null;
+      correctAnswer: string;
+      points: number;
+      programmingLanguage?: string | null;
+    }>
+  > {
     const systemPrompt = `You are an expert test creator. Generate high-quality test questions.
 
 CRITICAL FORMATTING RULES:
@@ -448,7 +547,7 @@ IMPORTANT: For programming/coding questions, you MUST:
         allocationGuidance += ` ADDITIONAL POINT ALLOCATION RULES: ${customInstructions}`;
       }
       
-      pointsInstruction = `- points: Distribute the total ${params.totalPoints} points across all questions. ${allocationGuidance} Total must equal exactly ${params.totalPoints}. Average around ${avgPoints} points per question.`;
+      pointsInstruction = `- points: Distribute the total ${params.totalPoints} points across these ${params.numberOfQuestions} questions. ${allocationGuidance} Total for this batch must equal exactly ${params.totalPoints}. Average around ${avgPoints} points per question.`;
     }
 
     // Check if programming questions are included
@@ -466,9 +565,26 @@ ${params.sourceContent.slice(0, 8000)}${params.sourceContent.length > 8000 ? '\n
 IMPORTANT: Create questions that directly test knowledge from the source material above. Focus on key concepts, definitions, and important facts from this content.`
       : '';
 
-    const userPrompt = `Create EXACTLY ${params.numberOfQuestions} ${params.difficulty} difficulty test questions about: ${params.topic}${sourceContentInstruction}
+    // Add existing questions context if this is a continuation batch
+    let existingQuestionsContext = '';
+    if (params.existingQuestions.length > 0) {
+      const existingSummary = params.existingQuestions.map((q, i) => 
+        `${i + 1}. [${q.type}] ${q.question.substring(0, 100)}${q.question.length > 100 ? '...' : ''}`
+      ).join('\n');
+      existingQuestionsContext = `\n\nEXISTING QUESTIONS IN THIS TEST (DO NOT DUPLICATE - create NEW, DIFFERENT questions):
+---
+${existingSummary}
+---
+CRITICAL: The questions you generate must be COMPLETELY DIFFERENT from the existing questions above. Cover different aspects of the topic, use different question styles, and avoid any overlap in content.`;
+    }
 
-IMPORTANT: You MUST generate exactly ${params.numberOfQuestions} questions. Not more, not less.
+    const batchInfo = params.totalBatches > 1 
+      ? ` (Batch ${params.batchNumber} of ${params.totalBatches})` 
+      : '';
+
+    const userPrompt = `Create EXACTLY ${params.numberOfQuestions} ${params.difficulty} difficulty test questions about: ${params.topic}${batchInfo}${sourceContentInstruction}${existingQuestionsContext}
+
+IMPORTANT: You MUST generate exactly ${params.numberOfQuestions} NEW questions. Not more, not less.
 
 Question types to include: ${params.questionTypes.join(', ')}
 ${params.additionalInstructions ? `Additional instructions: ${params.additionalInstructions}` : ''}
@@ -493,10 +609,8 @@ CRITICAL: Return ONLY the JSON array with exactly ${params.numberOfQuestions} qu
       { role: 'user', content: userPrompt }
     ];
 
-    const estimatedTokensPerQuestion = 350;
-    const baseTokens = params.sourceContent ? 4000 : 2000; // More tokens if processing source content
-    const calculatedTokens = baseTokens + params.numberOfQuestions * estimatedTokensPerQuestion;
-    const maxTokens = Math.max(4000, Math.min(calculatedTokens, 16000));
+    // Use conservative token estimate that fits within 4096 output limit
+    const maxTokens = 4000; // Stay under 4096 limit
 
     const response = await this.makeRequest(messages, maxTokens, {
       type: 'TEST_GENERATION',
@@ -504,7 +618,9 @@ CRITICAL: Return ONLY the JSON array with exactly ${params.numberOfQuestions} qu
       metadata: { 
         topic: params.topic, 
         numberOfQuestions: params.numberOfQuestions,
-        hasSourceContent: !!params.sourceContent 
+        hasSourceContent: !!params.sourceContent,
+        batchNumber: params.batchNumber,
+        totalBatches: params.totalBatches
       },
       creditMultiplier: params.sourceContent ? 2 : 1 // Double credits for file upload
     });
@@ -1244,6 +1360,283 @@ Make sure the flashcards:
     }>;
 
     return cards;
+  }
+
+  /**
+   * AI Test Editor Assistant - helps modify tests through natural language commands
+   * Returns the modified questions array based on user instructions
+   */
+  async testEditorAssistant(
+    params: {
+      instruction: string;
+      currentQuestions: Array<{
+        type: string;
+        question: string;
+        options: string[] | null;
+        correctAnswer: string;
+        points: number;
+      }>;
+      testTitle: string;
+      testDescription?: string;
+    },
+    context?: AIContext
+  ): Promise<{
+    questions: Array<{
+      type: QuestionType;
+      question: string;
+      options: string[] | null;
+      correctAnswer: string;
+      points: number;
+      aiGenerated: boolean;
+    }>;
+    explanation: string;
+  }> {
+    const systemPrompt = `You are an AI assistant helping teachers edit and improve their tests. You can:
+- Add new questions based on instructions
+- Delete questions (by index or content match)
+- Modify existing questions
+- Reword or improve question clarity
+- Change point values
+- Change question types
+- Add/remove answer options
+
+CRITICAL FORMATTING RULES:
+1. Return ONLY raw JSON - DO NOT wrap in markdown code blocks
+2. Start your response directly with { and end with }
+3. No explanatory text before or after the JSON
+
+Your response MUST be a JSON object with:
+{
+  "questions": [...], // The complete updated questions array
+  "explanation": "Brief explanation of what you changed"
+}
+
+Question types allowed: "MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "LONG_ANSWER", "ESSAY", "FILL_IN_BLANK", "PROGRAMMING"
+
+For MULTIPLE_CHOICE: options should be an array of 4 strings
+For TRUE_FALSE: options should be ["True", "False"]
+For other types: options should be null
+
+Mark any NEW questions you create with aiGenerated: true. Keep aiGenerated as-is for existing questions.`;
+
+    const currentQuestionsJson = JSON.stringify(params.currentQuestions, null, 2);
+
+    const userPrompt = `Test Title: ${params.testTitle}
+${params.testDescription ? `Description: ${params.testDescription}\n` : ''}
+Current Questions (${params.currentQuestions.length} total):
+${currentQuestionsJson}
+
+Teacher's instruction: "${params.instruction}"
+
+Apply the teacher's instruction to modify the test. Return the complete updated questions array along with a brief explanation of what you changed.
+
+Remember:
+- Keep the same structure for questions
+- Only modify what the teacher asked for
+- Mark new questions with aiGenerated: true
+- Preserve existing question properties unless specifically asked to change them`;
+
+    const messages: Message[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ];
+
+    // Estimate tokens based on current questions + new content
+    const maxTokens = Math.min(4000, 2000 + params.currentQuestions.length * 200);
+
+    const response = await this.makeRequest(messages, maxTokens, {
+      type: 'TEST_EDITOR_ASSISTANT',
+      context,
+      metadata: {
+        testTitle: params.testTitle,
+        questionCount: params.currentQuestions.length,
+        instruction: params.instruction.substring(0, 100)
+      }
+    });
+
+    const result = this.extractAndRepairJSON(response, false) as {
+      questions: Array<{
+        type: QuestionType;
+        question: string;
+        options: string[] | null;
+        correctAnswer: string;
+        points: number;
+        aiGenerated?: boolean;
+      }>;
+      explanation: string;
+    };
+
+    // Normalize the questions
+    const normalizedQuestions = result.questions.map((q) => ({
+      type: q.type,
+      question: q.question,
+      options: q.options,
+      correctAnswer: q.correctAnswer,
+      points: q.points || 1,
+      aiGenerated: q.aiGenerated ?? false
+    }));
+
+    // Normalize TRUE_FALSE questions
+    normalizedQuestions.forEach((q) => {
+      if (q.type === 'TRUE_FALSE') {
+        q.options = ['True', 'False'];
+        if (q.correctAnswer?.toLowerCase() === 'true') {
+          q.correctAnswer = 'True';
+        } else if (q.correctAnswer?.toLowerCase() === 'false') {
+          q.correctAnswer = 'False';
+        }
+      }
+    });
+
+    return {
+      questions: normalizedQuestions,
+      explanation: result.explanation || 'Changes applied successfully.'
+    };
+  }
+
+  /**
+   * Global Teacher Assistant - helps with navigation, creation, and general questions
+   */
+  async teacherAssistant(
+    params: {
+      message: string;
+      currentPage: string;
+      context?: {
+        testId?: string;
+        worksheetId?: string;
+        classId?: string;
+      };
+    },
+    context?: AIContext
+  ): Promise<{
+    response: string;
+    action?: {
+      type: 'navigate' | 'prefill' | 'none';
+      destination?: string;
+      prefill?: {
+        type: 'test' | 'worksheet' | 'study-guide' | 'flashcards';
+        data: Record<string, any>;
+      };
+    };
+  }> {
+    const systemPrompt = `You are a helpful AI assistant for teachers using the Checkmate educational platform. You can:
+
+1. ANSWER QUESTIONS about:
+   - How to use the platform
+   - Teaching strategies
+   - Educational content
+   - General questions
+
+2. HELP CREATE CONTENT by understanding what the teacher wants and providing prefilled data:
+   - Tests (with topic, number of questions, difficulty, question types)
+   - Worksheets (with topic, number of items, difficulty, item types)
+   - Study Guides (from tests or manual)
+   - Flashcards (with topic, number of cards)
+
+3. NAVIGATE to different parts of the platform
+
+RESPONSE FORMAT - You MUST return a JSON object:
+{
+  "response": "Your friendly response text to the teacher",
+  "action": {
+    "type": "navigate" | "prefill" | "none",
+    "destination": "/teacher/tests/create" (only if type is navigate or prefill),
+    "prefill": {
+      "type": "test" | "worksheet" | "study-guide" | "flashcards",
+      "data": {
+        // For tests:
+        "topic": "string",
+        "numberOfQuestions": number (5-40),
+        "difficulty": "easy" | "medium" | "hard",
+        "questionTypes": ["MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_ANSWER", "LONG_ANSWER", "ESSAY", "FILL_IN_BLANK", "PROGRAMMING"],
+        "additionalInstructions": "string"
+        
+        // For worksheets:
+        "topic": "string",
+        "numberOfItems": number (5-30),
+        "difficulty": "easy" | "medium" | "hard",
+        "itemTypes": ["PROBLEM", "FILL_BLANK", "SHORT_ANSWER", "MATCHING", "WORD_PROBLEM"],
+        "additionalInstructions": "string"
+        
+        // For flashcards:
+        "topic": "string",
+        "numberOfCards": number (5-50),
+        "additionalInstructions": "string"
+        
+        // For study guides:
+        "topic": "string",
+        "additionalInstructions": "string"
+      }
+    }
+  }
+}
+
+NAVIGATION DESTINATIONS:
+- /teacher - Dashboard
+- /teacher/classes - Classes
+- /teacher/tests - Tests list
+- /teacher/tests/create - Create test
+- /teacher/worksheets - Worksheets list
+- /teacher/worksheets/create - Create worksheet
+- /teacher/study-guides - Study guides list
+- /teacher/study-guides/create - Create study guide
+- /teacher/study-sets - Flashcards list
+- /teacher/study-sets/create - Create flashcards
+- /teacher/settings - Settings
+
+CRITICAL: 
+- Return ONLY raw JSON, no markdown code blocks
+- Start directly with { and end with }
+- Be friendly and helpful
+- If the user wants to create content, set action.type to "prefill" and include the prefill data
+- If just navigating, set action.type to "navigate"
+- If just answering a question, set action.type to "none"`;
+
+    const userPrompt = `Current page: ${params.currentPage}
+${params.context ? `Context: ${JSON.stringify(params.context)}` : ''}
+
+Teacher's message: "${params.message}"
+
+Analyze what the teacher wants and respond appropriately. If they want to create content (test, worksheet, study guide, flashcards), extract the details and provide prefill data.`;
+
+    const messages: Message[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ];
+
+    const response = await this.makeRequest(messages, 1500, {
+      type: 'TEACHER_ASSISTANT',
+      context,
+      metadata: {
+        currentPage: params.currentPage,
+        messageLength: params.message.length
+      }
+    });
+
+    try {
+      const result = this.extractAndRepairJSON(response, false) as {
+        response: string;
+        action?: {
+          type: 'navigate' | 'prefill' | 'none';
+          destination?: string;
+          prefill?: {
+            type: 'test' | 'worksheet' | 'study-guide' | 'flashcards';
+            data: Record<string, any>;
+          };
+        };
+      };
+
+      return {
+        response: result.response || "I'm here to help! What would you like to do?",
+        action: result.action
+      };
+    } catch {
+      // If JSON parsing fails, return the raw response as text
+      return {
+        response: response.replace(/```json\n?|\n?```/g, '').trim() || "I'm here to help! What would you like to do?",
+        action: { type: 'none' }
+      };
+    }
   }
 }
 
