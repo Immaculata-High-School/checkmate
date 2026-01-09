@@ -40,6 +40,9 @@ COPY . .
 RUN npx prisma generate
 
 # Build the SvelteKit application
+# Provide dummy DATABASE_URL for SvelteKit's post-build analysis (not used for actual connections)
+# Cache bust: 2026-01-09
+ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
 RUN npm run build
 
 # ============================================
