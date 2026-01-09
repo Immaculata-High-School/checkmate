@@ -1,11 +1,47 @@
 import { error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
-import type { PageServerLoad } from './$types';
+import type { PageServerLoad, Actions } from './$types';
+import { fail, redirect } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
+  const userId = locals.user!.id;
+
+  // First check if this is the user's own study set
+  const ownStudySet = await prisma.studySet.findFirst({
+    where: {
+      id: params.id,
+      creatorId: userId,
+      classId: null // Personal study sets have no class
+    },
+    include: {
+      cards: {
+        orderBy: { order: 'asc' }
+      }
+    }
+  });
+
+  if (ownStudySet) {
+    // Get student's progress for this set
+    const progress = await prisma.studyProgress.findUnique({
+      where: {
+        userId_studySetId: {
+          userId,
+          studySetId: params.id
+        }
+      }
+    });
+
+    return {
+      studySet: ownStudySet,
+      class: null, // Personal study set
+      progress,
+      isOwner: true
+    };
+  }
+
   // Get student's class memberships
   const memberships = await prisma.classMember.findMany({
-    where: { userId: locals.user!.id },
+    where: { userId },
     select: { classId: true }
   });
 
@@ -48,7 +84,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   const progress = await prisma.studyProgress.findUnique({
     where: {
       userId_studySetId: {
-        userId: locals.user!.id,
+        userId,
         studySetId: params.id
       }
     }
@@ -57,6 +93,32 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   return {
     studySet,
     class: assignment.class,
-    progress
+    progress,
+    isOwner: false
   };
+};
+
+export const actions: Actions = {
+  delete: async ({ params, locals }) => {
+    const userId = locals.user!.id;
+
+    // Verify ownership
+    const studySet = await prisma.studySet.findFirst({
+      where: {
+        id: params.id,
+        creatorId: userId,
+        classId: null
+      }
+    });
+
+    if (!studySet) {
+      return fail(403, { error: 'You can only delete your own personal study sets' });
+    }
+
+    await prisma.studySet.delete({
+      where: { id: params.id }
+    });
+
+    throw redirect(302, '/student/study-sets');
+  }
 };

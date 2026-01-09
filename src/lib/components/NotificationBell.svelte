@@ -135,8 +135,8 @@
   onMount(() => {
     fetchNotifications();
 
-    // Poll for new notifications every 30 seconds
-    const interval = setInterval(fetchNotifications, 30000);
+    // Poll for new notifications every 60 seconds (reduced from 30s for performance)
+    const interval = setInterval(fetchNotifications, 60000);
 
     // Click outside to close
     document.addEventListener('click', handleClickOutside);

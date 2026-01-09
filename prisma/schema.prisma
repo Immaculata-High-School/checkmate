@@ -828,6 +828,8 @@ model Notification {
   @@index([userId])
   @@index([read])
   @@index([createdAt])
+  @@index([userId, read]) // Compound index for unread notification count queries
+  @@index([userId, createdAt]) // Compound index for ordered notification queries
 }
 
 model AIUsageLog {

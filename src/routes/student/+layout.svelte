@@ -30,7 +30,7 @@
     { href: '/student', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/student/classes', label: 'My Classes', icon: BookOpen },
     { href: '/student/assignments', label: 'Assignments', icon: FileText },
-    { href: '/student/study', label: 'Study Materials', icon: GraduationCap },
+    { href: '/student/study-sets', label: 'Study Sets', icon: GraduationCap },
     { href: '/student/grades', label: 'My Grades', icon: Trophy }
   ];
 

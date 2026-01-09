@@ -197,9 +197,14 @@
     </a>
 
     <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900">Submissions</h1>
-        <p class="text-gray-500 mt-1">{data.test.title}</p>
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+          <CheckCircle class="w-5 h-5 text-orange-600" />
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold text-gray-900">Submissions</h1>
+          <p class="text-gray-500 mt-1">{data.test.title}</p>
+        </div>
       </div>
 
       <div class="flex flex-wrap items-center gap-2">

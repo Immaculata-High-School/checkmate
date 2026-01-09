@@ -1,5 +1,6 @@
 import { prisma } from './db';
 import { shuttleAI, type AIContext } from './shuttleai';
+import { cache } from './cache';
 
 // Global rate limit configuration - SYSTEM-WIDE AI LIMIT
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute window
@@ -101,11 +102,16 @@ export async function getQueueStatus(submissionId: string): Promise<{
       }
     });
 
-    // Estimate wait time: ~4 seconds per request at 15/min rate limit
-    // Plus any items currently processing
-    const processingCount = await prisma.gradingQueue.count({
-      where: { status: 'PROCESSING' }
-    });
+    // Get cached processing count or fetch if needed
+    const processingCacheKey = 'grading_processing_count';
+    let processingCount = cache.get<number>(processingCacheKey);
+    
+    if (processingCount === null) {
+      processingCount = await prisma.gradingQueue.count({
+        where: { status: 'PROCESSING' }
+      });
+      cache.set(processingCacheKey, processingCount, 3000); // 3 second cache
+    }
 
     const estimatedWaitSeconds = Math.ceil((itemsAhead + processingCount + 1) * 4);
 
@@ -538,6 +544,7 @@ export async function processQueue(): Promise<void> {
 
 /**
  * Get overall queue statistics
+ * Cached for 5 seconds to reduce DB load from frequent polling
  */
 export async function getQueueStats(): Promise<{
   queuedCount: number;
@@ -546,6 +553,20 @@ export async function getQueueStats(): Promise<{
   failedToday: number;
   averageWaitTimeSeconds: number;
 }> {
+  // Check cache first
+  const cacheKey = 'grading_queue_stats';
+  const cached = cache.get<{
+    queuedCount: number;
+    processingCount: number;
+    completedToday: number;
+    failedToday: number;
+    averageWaitTimeSeconds: number;
+  }>(cacheKey);
+  
+  if (cached) {
+    return cached;
+  }
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -590,13 +611,18 @@ export async function getQueueStats(): Promise<{
     averageWaitTimeSeconds = Math.round(totalWaitMs / recentCompleted.length / 1000);
   }
 
-  return {
+  const result = {
     queuedCount,
     processingCount,
     completedToday,
     failedToday,
     averageWaitTimeSeconds
   };
+  
+  // Cache for 5 seconds
+  cache.set(cacheKey, result, 5000);
+  
+  return result;
 }
 
 /**

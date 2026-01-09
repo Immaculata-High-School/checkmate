@@ -71,9 +71,14 @@
 
 <div class="max-w-4xl mx-auto">
   <div class="flex items-center justify-between mb-6">
-    <div>
-      <h1 class="text-2xl font-bold text-gray-900">Feature Requests</h1>
-      <p class="text-sm text-gray-500 mt-1">Submit ideas and feedback to help improve Checkmate. We'll implement most requested features if they're doable!</p>
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
+        <Lightbulb class="w-5 h-5 text-yellow-600" />
+      </div>
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">Feature Requests</h1>
+        <p class="text-sm text-gray-500 mt-1">Submit ideas and feedback to help improve Checkmate. We'll implement most requested features if they're doable!</p>
+      </div>
     </div>
     <button onclick={() => showForm = !showForm} class="btn btn-primary">
       <Plus class="w-5 h-5" />

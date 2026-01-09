@@ -70,10 +70,19 @@ export const load: PageServerLoad = async ({ locals }) => {
       })
     : [];
 
-  // Get study progress count
-  const studyProgress = await prisma.studyProgress.count({
-    where: { userId }
-  });
+  // Get study sets count (both personal and assigned)
+  const [ownStudySetsCount, assignedStudySetsCount] = await Promise.all([
+    prisma.studySet.count({
+      where: { creatorId: userId, classId: null }
+    }),
+    prisma.classAssignment.count({
+      where: {
+        classId: { in: classIds },
+        type: 'STUDY_SET',
+        studySetId: { not: null }
+      }
+    })
+  ]);
 
   const statsResult = stats[0];
 
@@ -82,7 +91,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       totalClasses: classMemberships.length,
       totalTests: Number(statsResult?.total_tests || 0),
       averageScore: Math.round(statsResult?.avg_score || 0),
-      studySets: studyProgress
+      studySets: ownStudySetsCount + assignedStudySetsCount
     },
     recentSubmissions,
     upcomingAssignments

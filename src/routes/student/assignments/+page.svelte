@@ -35,8 +35,15 @@
 
 <div class="max-w-4xl mx-auto">
   <div class="mb-8">
-    <h1 class="text-2xl font-bold text-gray-900">My Assignments</h1>
-    <p class="text-gray-500 mt-1">View and complete assignments from your classes</p>
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+        <FileText class="w-5 h-5 text-indigo-600" />
+      </div>
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">My Assignments</h1>
+        <p class="text-gray-500 mt-1">View and complete assignments from your classes</p>
+      </div>
+    </div>
   </div>
 
   <!-- Stats -->

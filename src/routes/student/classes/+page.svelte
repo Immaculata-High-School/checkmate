@@ -7,8 +7,15 @@
 
 <div class="max-w-4xl mx-auto">
   <div class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-900">My Classes</h1>
-    <p class="text-gray-600">View all your enrolled classes</p>
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+        <BookOpen class="w-5 h-5 text-blue-600" />
+      </div>
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">My Classes</h1>
+        <p class="text-gray-600">View all your enrolled classes</p>
+      </div>
+    </div>
   </div>
 
   {#if data.classes.length === 0}

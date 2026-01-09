@@ -48,11 +48,15 @@
 
 <div class="max-w-4xl mx-auto">
   <div class="mb-8">
-    <h1 class="text-2xl font-bold text-gray-900 flex items-center gap-3">
-      <Settings class="w-7 h-7 text-indigo-600" />
-      Teacher Settings
-    </h1>
-    <p class="text-gray-500 mt-1">Manage integrations and class configurations</p>
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+        <Settings class="w-5 h-5 text-indigo-600" />
+      </div>
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">Teacher Settings</h1>
+        <p class="text-gray-500 mt-1">Manage integrations and class configurations</p>
+      </div>
+    </div>
   </div>
 
   <!-- Status Messages -->

@@ -299,16 +299,21 @@
     </a>
 
     <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-      <div>
-        <div class="flex items-center gap-3 mb-2">
-          <h1 class="text-2xl font-bold text-gray-900">{data.test.title}</h1>
-          <span class="badge {data.test.status === 'PUBLISHED' ? 'badge-green' : 'badge-gray'}">
-            {data.test.status === 'PUBLISHED' ? 'Published' : 'Draft'}
-          </span>
+      <div class="flex items-start gap-3">
+        <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+          <FileText class="w-6 h-6 text-blue-600" />
         </div>
-        {#if data.test.description}
-          <p class="text-gray-600">{data.test.description}</p>
-        {/if}
+        <div>
+          <div class="flex items-center gap-3 mb-2">
+            <h1 class="text-2xl font-bold text-gray-900">{data.test.title}</h1>
+            <span class="badge {data.test.status === 'PUBLISHED' ? 'badge-green' : 'badge-gray'}">
+              {data.test.status === 'PUBLISHED' ? 'Published' : 'Draft'}
+            </span>
+          </div>
+          {#if data.test.description}
+            <p class="text-gray-600">{data.test.description}</p>
+          {/if}
+        </div>
       </div>
 
       <div class="flex flex-wrap items-center gap-2">

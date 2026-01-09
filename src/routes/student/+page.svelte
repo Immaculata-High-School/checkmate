@@ -34,9 +34,9 @@
         </p>
       </div>
       <div class="flex gap-3">
-        <a href="/student/study" class="btn btn-secondary">
+        <a href="/student/study-sets" class="btn btn-secondary">
           <BookOpen class="w-5 h-5" />
-          Study Materials
+          Study Sets
         </a>
         <a href="/student/assignments" class="btn btn-primary">
           <Play class="w-5 h-5" />
@@ -115,7 +115,7 @@
               href={assignment.test
                 ? `/student/assignments/${assignment.test.id}`
                 : assignment.studySet
-                  ? `/student/study/${assignment.studySet.id}`
+                  ? `/student/study-sets/${assignment.studySet.id}`
                   : '#'}
               class="flex items-center justify-between p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
             >

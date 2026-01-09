@@ -27,7 +27,8 @@ if (process.env.NODE_ENV === 'development') {
     const before = Date.now();
     const result = await next(params);
     const after = Date.now();
-    if (after - before > 100) {
+    // Only log queries over 500ms (reduced from 100ms - remote DBs have latency)
+    if (after - before > 500) {
       console.warn(`Slow query (${after - before}ms): ${params.model}.${params.action}`);
     }
     return result;

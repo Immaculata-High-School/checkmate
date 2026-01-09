@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { ArrowLeft, Library, ChevronLeft, ChevronRight, RotateCcw, Shuffle } from 'lucide-svelte';
+  import { enhance } from '$app/forms';
+  import { ArrowLeft, Library, ChevronLeft, ChevronRight, RotateCcw, Shuffle, Trash2 } from 'lucide-svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -8,6 +9,7 @@
   let showBack = $state(false);
   let studyMode = $state(true);
   let shuffledCards = $state([...data.studySet.cards]);
+  let showDeleteConfirm = $state(false);
 
   function nextCard() {
     if (currentCardIndex < shuffledCards.length - 1) {
@@ -46,9 +48,9 @@
 <div class="max-w-4xl mx-auto">
   <!-- Header -->
   <div class="mb-6">
-    <a href="/student/assignments" class="inline-flex items-center gap-2 text-gray-500 hover:text-gray-700 mb-4">
+    <a href="/student/study-sets" class="inline-flex items-center gap-2 text-gray-500 hover:text-gray-700 mb-4">
       <ArrowLeft class="w-4 h-4" />
-      Back to Assignments
+      Back to Study Sets
     </a>
 
     <div class="flex items-start justify-between">
@@ -59,10 +61,14 @@
         <div>
           <h1 class="text-2xl font-bold text-gray-900">{data.studySet.title}</h1>
           <p class="text-gray-500 mt-1">
-            {data.class.emoji || '📚'} {data.class.name}
-            {#if data.studySet.creator?.name}
-              <span class="text-gray-300 mx-2">|</span>
-              By {data.studySet.creator.name}
+            {#if data.class}
+              {data.class.emoji || '📚'} {data.class.name}
+              {#if data.studySet.creator?.name}
+                <span class="text-gray-300 mx-2">|</span>
+                By {data.studySet.creator.name}
+              {/if}
+            {:else}
+              <span class="text-purple-600">My Study Set</span>
             {/if}
           </p>
           <p class="text-sm text-gray-500 mt-1">{data.studySet.cards.length} cards</p>
@@ -77,6 +83,11 @@
         <button onclick={() => studyMode = !studyMode} class="btn btn-primary">
           {studyMode ? 'View All' : 'Study Mode'}
         </button>
+        {#if data.isOwner}
+          <button onclick={() => showDeleteConfirm = true} class="btn btn-ghost text-red-600">
+            <Trash2 class="w-4 h-4" />
+          </button>
+        {/if}
       </div>
     </div>
   </div>
@@ -140,6 +151,7 @@
           {#each shuffledCards as _, idx}
             <button
               onclick={() => { currentCardIndex = idx; showBack = false; }}
+              aria-label="Go to card {idx + 1}"
               class="w-2 h-2 rounded-full transition-colors {idx === currentCardIndex ? 'bg-purple-500' : 'bg-gray-300 hover:bg-gray-400'}"
             ></button>
           {/each}
@@ -185,3 +197,33 @@
     </div>
   {/if}
 </div>
+
+<!-- Delete Confirmation Modal -->
+{#if showDeleteConfirm}
+  <div
+    class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    onclick={(e) => e.target === e.currentTarget && (showDeleteConfirm = false)}
+    onkeydown={(e) => e.key === 'Escape' && (showDeleteConfirm = false)}
+  >
+    <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+      <h3 class="text-lg font-semibold text-gray-900 mb-2">Delete Study Set?</h3>
+      <p class="text-gray-600 mb-6">
+        Are you sure you want to delete "{data.studySet.title}"? This action cannot be undone.
+      </p>
+      <div class="flex gap-3 justify-end">
+        <button onclick={() => showDeleteConfirm = false} class="btn btn-secondary">
+          Cancel
+        </button>
+        <form method="POST" action="?/delete" use:enhance>
+          <button type="submit" class="btn bg-red-600 text-white hover:bg-red-700">
+            <Trash2 class="w-4 h-4" />
+            Delete
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+{/if}

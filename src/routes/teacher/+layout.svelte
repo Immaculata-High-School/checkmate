@@ -84,6 +84,7 @@
             <ChessKing class="w-5 h-5 text-white" />
           </div>
           <span class="text-lg font-bold text-gray-900">Checkmate</span>
+          <span class="ml-auto text-xs font-medium text-gray-500">{data.user?.role === 'OWNER' ? 'Admin' : 'Teacher'}</span>
         </a>
         <button onclick={() => (sidebarOpen = false)} class="lg:hidden p-1 hover:bg-gray-100 rounded">
           <X class="w-5 h-5 text-gray-500" />

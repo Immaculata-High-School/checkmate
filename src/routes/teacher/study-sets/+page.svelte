@@ -15,9 +15,14 @@
 <div class="max-w-6xl mx-auto">
   <!-- Header -->
   <div class="flex items-center justify-between mb-6">
-    <div>
-      <h1 class="text-2xl font-bold text-gray-900">Study Sets</h1>
-      <p class="text-gray-600">Create flashcard sets for student learning</p>
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+        <Layers class="w-5 h-5 text-purple-600" />
+      </div>
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">Study Sets</h1>
+        <p class="text-gray-600">Create flashcard sets for student learning</p>
+      </div>
     </div>
     <a href="/teacher/study-sets/create" class="btn btn-primary">
       <Plus class="w-4 h-4" />

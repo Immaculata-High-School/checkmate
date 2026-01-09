@@ -1,5 +1,6 @@
 import { lucia, getUserOrgMemberships, getEffectiveRole } from '$lib/server/auth';
 import { startQueueProcessor } from '$lib/server/rateLimiter';
+import { cache } from '$lib/server/cache';
 import type { Handle } from '@sveltejs/kit';
 
 // Start the grading queue processor when the server starts
@@ -16,7 +17,26 @@ export const handle: Handle = async ({ event, resolve }) => {
     return resolve(event);
   }
 
-  const { session, user } = await lucia.validateSession(sessionId);
+  // Try to get session from cache first (cache for 30 seconds)
+  const sessionCacheKey = `session:${sessionId}`;
+  let cachedSession = cache.get<{ session: any; user: any }>(sessionCacheKey);
+  
+  let session: any;
+  let user: any;
+  
+  if (cachedSession) {
+    session = cachedSession.session;
+    user = cachedSession.user;
+  } else {
+    const result = await lucia.validateSession(sessionId);
+    session = result.session;
+    user = result.user;
+    
+    // Cache valid sessions for 30 seconds
+    if (session && user) {
+      cache.set(sessionCacheKey, { session, user }, 30000);
+    }
+  }
 
   if (session && session.fresh) {
     const sessionCookie = lucia.createSessionCookie(session.id);

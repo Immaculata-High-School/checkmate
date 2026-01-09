@@ -28,8 +28,16 @@
   let { data, form }: { data: PageData; form: ActionData } = $props();
   let showDeleteConfirm = $state(false);
   let editing = $state(false);
-  let name = $state(data.class.name);
-  let description = $state(data.class.description || '');
+  let name = $state('');
+  let description = $state('');
+  
+  // Sync name/description when data changes or editing opens
+  $effect(() => {
+    if (editing) {
+      name = data.class.name;
+      description = data.class.description || '';
+    }
+  });
   
   // PowerSchool roster sync state
   let showRosterSyncModal = $state(false);
@@ -356,8 +364,16 @@
 
 <!-- Edit Modal -->
 {#if editing}
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick={() => editing = false}>
-    <div class="card p-6 max-w-md w-full mx-4" onclick={(e) => e.stopPropagation()}>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div 
+    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" 
+    onclick={() => editing = false}
+    onkeydown={(e) => e.key === 'Escape' && (editing = false)}
+    role="dialog"
+    aria-modal="true"
+  >
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="card p-6 max-w-md w-full mx-4" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="document">
       <h3 class="font-semibold text-gray-900 mb-4">Edit Class</h3>
 
       {#if form?.error}
@@ -403,8 +419,16 @@
 
 <!-- Delete Confirmation -->
 {#if showDeleteConfirm}
-  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onclick={() => showDeleteConfirm = false}>
-    <div class="card p-6 max-w-md mx-4" onclick={(e) => e.stopPropagation()}>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div 
+    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" 
+    onclick={() => showDeleteConfirm = false}
+    onkeydown={(e) => e.key === 'Escape' && (showDeleteConfirm = false)}
+    role="dialog"
+    aria-modal="true"
+  >
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="card p-6 max-w-md mx-4" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="document">
       <div class="flex items-center gap-3 mb-4">
         <div class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
           <AlertCircle class="w-5 h-5 text-red-600" />

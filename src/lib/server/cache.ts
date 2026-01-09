@@ -214,6 +214,12 @@ export const CacheKeys = {
   studentClasses: (studentId: string) => `student:${studentId}:classes`,
   teacherStats: (teacherId: string) => `teacher:${teacherId}:stats`,
   studentStats: (studentId: string) => `student:${studentId}:stats`,
+  teacherClasses: (teacherId: string) => `teacher_classes:${teacherId}`,
+  teacherTests: (teacherId: string) => `teacher_tests:${teacherId}`,
+  teacherOrg: (teacherId: string) => `teacher_org:${teacherId}`,
+  session: (sessionId: string) => `session:${sessionId}`,
+  studentOrg: (studentId: string) => `student_org:${studentId}`,
+  studentAssignments: (studentId: string) => `student_assignments:${studentId}`,
 } as const;
 
 // Invalidation helpers
@@ -221,6 +227,12 @@ export function invalidateUserCache(userId: string): void {
   cache.deletePattern(`user:${userId}:`);
   cache.deletePattern(`student:${userId}:`);
   cache.deletePattern(`teacher:${userId}:`);
+  cache.delete(`teacher_classes:${userId}`);
+  cache.delete(`teacher_tests:${userId}`);
+  cache.delete(`teacher_org:${userId}`);
+  cache.delete(`student_org:${userId}`);
+  cache.delete(`student_classes:${userId}`);
+  cache.delete(`student_assignments:${userId}`);
 }
 
 export function invalidateClassCache(classId: string): void {
@@ -229,6 +241,24 @@ export function invalidateClassCache(classId: string): void {
 
 export function invalidateTestCache(testId: string): void {
   cache.deletePattern(`test:${testId}:`);
+}
+
+// Invalidate teacher's layout caches (classes, tests list)
+export function invalidateTeacherLayoutCache(teacherId: string): void {
+  cache.delete(`teacher_classes:${teacherId}`);
+  cache.delete(`teacher_tests:${teacherId}`);
+}
+
+// Invalidate student's layout caches
+export function invalidateStudentLayoutCache(studentId: string): void {
+  cache.delete(`student_org:${studentId}`);
+  cache.delete(`student_classes:${studentId}`);
+  cache.delete(`student_assignments:${studentId}`);
+}
+
+// Invalidate session cache (call on logout or session changes)
+export function invalidateSessionCache(sessionId: string): void {
+  cache.delete(`session:${sessionId}`);
 }
 
 export default cache;
