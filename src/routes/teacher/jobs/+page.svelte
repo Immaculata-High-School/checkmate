@@ -107,7 +107,7 @@
         </div>
         Compute Jobs
       </h1>
-      <p class="text-gray-500 mt-1">Track your background tasks</p>
+      <p class="text-gray-500 mt-1">Track your AI tasks and compute usage. These are metered and billed accordingly since they use resources.</p>
     </div>
     <button onclick={refresh} disabled={refreshing} class="btn btn-secondary">
       <RefreshCw class="w-4 h-4 {refreshing ? 'animate-spin' : ''}" />

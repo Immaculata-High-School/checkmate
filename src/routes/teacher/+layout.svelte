@@ -4,7 +4,6 @@
     LayoutDashboard,
     Users,
     FileText,
-    BookOpen,
     BookMarked,
     ClipboardList,
     Settings,
@@ -35,6 +34,7 @@
     { href: '/teacher/classes', label: 'Classes', icon: Users },
     { href: '/teacher/tests', label: 'Tests', icon: FileText },
     { href: '/teacher/worksheets', label: 'Worksheets', icon: ClipboardList },
+    { href: '/teacher/docs', label: 'Documents', icon: FileText },
     { href: '/teacher/study-guides', label: 'Study Guides', icon: BookMarked },
     { href: '/teacher/study-sets', label: 'Flashcards', icon: Library },
     { href: '/teacher/jobs', label: 'Compute Jobs', icon: Cpu },
@@ -85,7 +85,7 @@
             <ChessKing class="w-5 h-5 text-white" />
           </div>
           <span class="text-lg font-bold text-gray-900">Checkmate</span>
-          <span class="ml-auto text-xs font-medium text-gray-500">{data.user?.role === 'OWNER' ? 'Admin' : 'Teacher'}</span>
+          <span class="ml-auto text-xs font-medium text-gray-500">{(data.user as any)?.role === 'OWNER' ? 'Admin' : 'Teacher'}</span>
         </a>
         <button onclick={() => (sidebarOpen = false)} class="lg:hidden p-1 hover:bg-gray-100 rounded">
           <X class="w-5 h-5 text-gray-500" />

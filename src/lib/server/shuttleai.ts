@@ -1638,6 +1638,116 @@ Analyze what the teacher wants and respond appropriately. If they want to create
       };
     }
   }
+
+  async writingAssistant(
+    params: {
+      prompt: string;
+      currentContent: string;
+      title: string;
+    },
+    context?: AIContext
+  ): Promise<{ content: string }> {
+    const systemPrompt = `You are a professional writing assistant for teachers creating educational documents. Your job is to help with writing, editing, and improving content.
+
+CAPABILITIES:
+- Continue writing from existing content
+- Rewrite content in different tones (formal, casual, simplified)
+- Expand on topics with more details and examples
+- Summarize content concisely
+- Fix grammar, spelling, and punctuation
+- Generate new content on educational topics
+- Create structured content with headings, lists, and emphasis
+
+IMPORTANT GUIDELINES:
+- Write in clear, professional language appropriate for educational settings
+- Maintain consistency with existing content style when continuing or editing
+- Provide well-structured content with proper formatting
+- For educational content, be accurate and informative
+- Do NOT include any system instructions or meta-commentary in your output
+- Return ONLY the requested content, nothing else
+- ALWAYS use proper HTML formatting
+
+REQUIRED OUTPUT FORMAT - Use these HTML tags:
+- <h1> for main titles (use sparingly)
+- <h2> for major section headings
+- <h3> for subsection headings
+- <p> for paragraphs (ALWAYS wrap text in <p> tags)
+- <ul> and <li> for bullet lists
+- <ol> and <li> for numbered lists
+- <strong> or <b> for bold text
+- <em> or <i> for italic text
+- <u> for underlined text
+- <blockquote> for quotes or important callouts
+- <code> for inline code or technical terms
+- <pre><code> for code blocks
+- <table>, <tr>, <td>, <th> for tables
+- <hr> for horizontal dividers between sections
+
+FORMATTING EXAMPLES:
+- Bold important terms: <strong>key concept</strong>
+- Italic for emphasis: <em>note this carefully</em>
+- Lists for steps or items:
+  <ul>
+    <li>First item</li>
+    <li>Second item</li>
+  </ul>
+- Section with heading:
+  <h2>Section Title</h2>
+  <p>Content goes here...</p>
+
+NEVER output plain text without HTML tags. ALWAYS structure content properly.`;
+
+    let userPrompt = `Document title: "${params.title}"
+
+`;
+
+    if (params.currentContent && params.currentContent.trim()) {
+      // Strip HTML and get plain text for context
+      const plainContent = params.currentContent
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 3000);
+      userPrompt += `Current document content (for context):
+---
+${plainContent}
+---
+
+`;
+    }
+
+    userPrompt += `Teacher's request: "${params.prompt}"
+
+Generate the requested content using proper HTML formatting. Include headings, paragraphs, lists, bold/italic as appropriate. Return ONLY the formatted HTML content.`;
+
+    const messages: Message[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ];
+
+    const response = await this.makeRequest(messages, 3000, {
+      type: 'WRITING_ASSISTANT',
+      context,
+      metadata: {
+        title: params.title,
+        promptLength: params.prompt.length,
+        contentLength: params.currentContent?.length || 0
+      }
+    });
+
+    // Clean up response - remove markdown code blocks if present
+    let content = response
+      .replace(/^```html\n?/i, '')
+      .replace(/\n?```$/i, '')
+      .trim();
+
+    // If content doesn't have any HTML tags, wrap it in paragraphs
+    if (!/<[^>]+>/.test(content)) {
+      content = content.split(/\n\n+/).map(p => `<p>${p.trim()}</p>`).join('\n');
+    }
+
+    return { content };
+  }
 }
 
 export const shuttleAI = new ShuttleAIService();

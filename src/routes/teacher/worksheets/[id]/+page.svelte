@@ -233,7 +233,7 @@
               <p class="text-gray-900 leading-relaxed">{item.content}</p>
 
               <!-- Answer Space -->
-              {#if item.type === 'SHORT_ANSWER' || item.type === 'WORD_PROBLEM'}
+              {#if item.type === 'SHORT_ANSWER' || item.type === 'LONG_ANSWER'}
                 <div class="mt-3 space-y-2">
                   <div class="answer-line border-b border-gray-300 h-6"></div>
                   <div class="answer-line border-b border-gray-300 h-6"></div>
@@ -241,9 +241,9 @@
                 </div>
               {:else if item.type === 'PROBLEM'}
                 <div class="mt-3 answer-box border border-gray-300 rounded h-16 bg-slate-50/50 print:bg-transparent"></div>
-              {:else if item.type === 'FILL_BLANK' || item.type === 'FILL_IN_BLANK'}
+              {:else if item.type === 'FILL_IN_BLANK'}
                 <!-- Blank is inline with content -->
-              {:else if item.type === 'MATCHING'}
+              {:else if item.type === 'MULTIPLE_CHOICE'}
                 <div class="mt-3">
                   <div class="answer-line border-b border-gray-300 h-6"></div>
                 </div>

@@ -78,7 +78,6 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 
   // Get PowerSchool connection status and class mappings
   const psConnected = await powerSchool.isConnected(locals.user!.id);
-  let psCategories: any[] = [];
   let linkedClasses: any[] = [];
 
   if (psConnected) {
@@ -109,13 +108,6 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
         mappedStudents: tc.class.powerSchoolStudentMappings.length,
         totalStudents: tc.class._count.members
       }));
-
-    // Get categories
-    try {
-      psCategories = await powerSchool.getCategories(locals.user!.id);
-    } catch (e) {
-      console.warn('Failed to fetch PowerSchool categories:', e);
-    }
   }
 
   return {
@@ -133,8 +125,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
     powerSchool: {
       configured: powerSchool.getConfig().isConfigured,
       connected: psConnected,
-      linkedClasses,
-      categories: psCategories
+      linkedClasses
     }
   };
 };
@@ -719,6 +710,7 @@ export const actions: Actions = {
     const assignmentName = formData.get('assignmentName')?.toString();
     const categoryId = formData.get('categoryId')?.toString();
     const dueDate = formData.get('dueDate')?.toString();
+    const term = formData.get('term')?.toString();
     const submissionIds = formData.getAll('submissionIds').map(id => id.toString());
     const forceRerelease = formData.get('forceRerelease') === 'true';
     const markMissing = formData.get('markMissing') === 'true';
@@ -760,6 +752,7 @@ export const actions: Actions = {
           assignmentName: assignmentName || test.title,
           categoryId: categoryId ? parseInt(categoryId) : undefined,
           dueDate: dueDate || undefined,
+          term: term || undefined,
           submissionIds: submissionIds.length > 0 ? submissionIds : undefined,
           forceRerelease,
           markMissing
@@ -779,6 +772,7 @@ export const actions: Actions = {
             assignmentName: assignmentName || test.title,
             categoryId: categoryId ? parseInt(categoryId) : undefined,
             dueDate: dueDate || undefined,
+            term: term || undefined,
             submissionIds: submissionIds.length > 0 ? submissionIds : undefined,
             forceRerelease,
             markMissing

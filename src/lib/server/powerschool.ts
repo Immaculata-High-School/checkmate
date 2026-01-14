@@ -267,6 +267,28 @@ export async function getCategories(userId: string): Promise<PowerSchoolCategory
   return data.categories;
 }
 
+export interface PowerSchoolTerm {
+  name: string;
+  is_current: boolean;
+}
+
+export interface PowerSchoolTermsResponse {
+  count: number;
+  current_term: string;
+  store_codes: string[];
+  terms: PowerSchoolTerm[];
+}
+
+/**
+ * Get available terms from PowerSchool
+ */
+export async function getTerms(userId: string): Promise<PowerSchoolTermsResponse> {
+  return apiRequest<PowerSchoolTermsResponse>(
+    userId,
+    '/api/v1/teacher/terms'
+  );
+}
+
 /**
  * Get students in a section
  */
@@ -303,6 +325,7 @@ export async function createAssignment(
     due_date: string;
     points: number;
     category_id: number;
+    term?: string;
   }
 ): Promise<{ success: boolean; assignment: any; assignment_id?: number }> {
   return apiRequest(userId, `/api/v1/teacher/classes/${sectionId}/assignments`, {
@@ -333,21 +356,28 @@ export async function getAssignmentsAllTerms(
   userId: string,
   sectionId: number
 ): Promise<any[]> {
-  // Try common terms in order of likelihood for current time (January = Q3)
-  const terms = ['Q3', 'Q2', 'Q1', 'Q4', 'S1', 'S2'];
+  // Try all common terms - include all store_codes from PowerSchool API
+  const terms = ['Q3', 'Q2', 'Q1', 'Q4', 'S1', 'S2', 'E1', 'E2'];
+  
+  // Collect all assignments from all terms
+  const allAssignments: any[] = [];
+  const seenIds = new Set<number>();
   
   for (const term of terms) {
     try {
       const assignments = await getAssignments(userId, sectionId, term);
-      if (assignments.length > 0) {
-        return assignments;
+      for (const a of assignments) {
+        if (!seenIds.has(a.id)) {
+          seenIds.add(a.id);
+          allAssignments.push(a);
+        }
       }
     } catch (e) {
       // Continue to next term
     }
   }
   
-  return [];
+  return allAssignments;
 }
 
 /**
@@ -405,6 +435,7 @@ export async function releaseGradesToPowerSchool(
     assignmentName?: string;
     categoryId?: number;
     dueDate?: string;
+    term?: string; // Term/grading period for the assignment (e.g., "Q1", "Q2", "S1")
     submissionIds?: string[]; // Optional: specific submissions to release
     forceRerelease?: boolean; // If true, re-release even if already released
     markMissing?: boolean; // If true, mark non-submitted students as missing with 0
@@ -778,26 +809,48 @@ export async function releaseGradesToPowerSchool(
       description: `Checkmate Test: ${testId}`,
       due_date: dueDate,
       points: totalPoints,
-      category_id: categoryId
+      category_id: categoryId,
+      term: options.term
     });
 
     if (!createResult.success) {
       throw new Error('Failed to create assignment in PowerSchool');
     }
 
-    // API now returns assignment_id directly
+    // API now returns assignment_id directly - check multiple possible locations
     if (createResult.assignment_id) {
       psAssignmentId = createResult.assignment_id;
+    } else if (createResult.assignment?.id) {
+      psAssignmentId = createResult.assignment.id;
+    } else if (typeof createResult.assignment === 'number') {
+      psAssignmentId = createResult.assignment;
     } else {
       // Fallback: fetch assignments to find the new one
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait a bit longer for PowerSchool to sync
       
-      const updatedAssignments = await getAssignmentsAllTerms(userId, mapping.sectionId);
+      // First try the specific term if provided
+      let updatedAssignments: any[] = [];
+      if (options.term) {
+        try {
+          updatedAssignments = await getAssignments(userId, mapping.sectionId, options.term);
+        } catch (e) {
+          console.warn('Failed to get assignments for specific term:', options.term);
+        }
+      }
+      
+      // Fall back to searching all terms if not found
+      if (updatedAssignments.length === 0) {
+        updatedAssignments = await getAssignmentsAllTerms(userId, mapping.sectionId);
+      }
+      
       psAssignment = updatedAssignments.find(a => 
         a.name === assignmentName || a.description?.includes(`Checkmate Test: ${testId}`)
       );
       
       if (!psAssignment) {
+        // Log what we got for debugging
+        console.error('Could not find assignment. Create result:', JSON.stringify(createResult));
+        console.error('Assignments found:', updatedAssignments.map(a => ({ id: a.id, name: a.name })));
         throw new Error('Assignment was created but could not be found. Please try again.');
       }
       

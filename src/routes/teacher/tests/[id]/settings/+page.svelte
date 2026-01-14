@@ -114,14 +114,14 @@
       <div class="flex items-start gap-3">
         <Info class="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" />
         <div class="flex-1">
-          <h3 class="font-semibold text-indigo-900">Review Settings Before Publishing</h3>
+          <h3 class="font-semibold text-indigo-900">Review Settings Before Opening</h3>
           <p class="text-indigo-700 text-sm mt-1">
-            Please review and configure your test settings below. When you're ready, click the publish button to make the test available to students.
+            Please review and configure your test settings below. When you're ready, click the button to make the test available to students.
           </p>
           <form method="POST" action="?/publishTest" use:enhance class="mt-4">
             <button type="submit" class="btn btn-primary">
               <Send class="w-4 h-4" />
-              Publish Test
+              Open for Students
             </button>
           </form>
         </div>

@@ -589,8 +589,9 @@
           <div class="form-group">
             <label for="classId" class="label flex items-center gap-2">
               <BookOpen class="w-4 h-4" />
-              Assign to Class
+              Create for Class
             </label>
+            <p class="text-xs text-gray-500 mb-2">The test will be linked to this class (you'll open it for students later)</p>
             {#if data.classes.length > 0}
               <select id="classId" name="classId" bind:value={selectedClassId} required class="input">
                 <option value="">Select a class...</option>
@@ -676,10 +677,10 @@
             {:else}
               <Save class="w-4 h-4" />
             {/if}
-            Save Test
+            Save as Draft
           </button>
         </div>
-        <p class="text-center text-sm text-gray-500">You can publish the test later from the test details page.</p>
+        <p class="text-center text-sm text-gray-500">Your test will be saved but won't be visible to students yet. You can open it for students from the test details page.</p>
       </form>
     {/if}
   {:else}
@@ -700,8 +701,9 @@
         <div class="form-group">
           <label for="manual-classId" class="label flex items-center gap-2">
             <BookOpen class="w-4 h-4" />
-            Assign to Class
+            Create for Class
           </label>
+          <p class="text-xs text-gray-500 mb-2">The test will be linked to this class (you'll open it for students later)</p>
           {#if data.classes.length > 0}
             <select id="manual-classId" name="classId" bind:value={manualClassId} required class="input">
               <option value="">Select a class...</option>
@@ -867,10 +869,10 @@
           {:else}
             <Save class="w-4 h-4" />
           {/if}
-          Save Test
+          Save as Draft
         </button>
       </div>
-      <p class="text-center text-sm text-gray-500 mt-3">You can publish the test later from the test details page.</p>
+      <p class="text-center text-sm text-gray-500 mt-3">Your test will be saved but won't be visible to students yet. You can open it for students from the test details page.</p>
     </form>
   {/if}
 </div>

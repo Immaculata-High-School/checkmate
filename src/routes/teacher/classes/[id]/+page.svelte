@@ -312,8 +312,8 @@
                     <div class="font-medium text-gray-900 text-sm truncate">{test.title}</div>
                     <div class="text-xs text-gray-500">{test._count.questions} questions</div>
                   </div>
-                  <span class="badge {test.status === 'PUBLISHED' ? 'badge-green' : 'badge-gray'} text-xs">
-                    {test.status}
+                  <span class="badge {test.status === 'PUBLISHED' ? 'badge-green' : 'badge-gray'} text-xs" title="{test.status === 'PUBLISHED' ? 'Students can access this test' : 'Not yet visible to students'}">
+                    {test.status === 'PUBLISHED' ? 'Open' : 'Draft'}
                   </span>
                 </div>
               </a>

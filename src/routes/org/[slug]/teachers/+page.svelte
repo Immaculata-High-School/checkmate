@@ -175,8 +175,8 @@
                     {#if member.role !== 'ORG_OWNER'}
                       <form method="POST" action="?/impersonate" use:enhance={() => {
                         return async ({ result }) => {
-                          if (result.type === 'success' && result.data?.redirect) {
-                            window.location.href = result.data.redirect;
+                          if (result.type === 'success' && (result.data as any)?.redirect) {
+                            window.location.href = (result.data as any).redirect;
                           }
                         };
                       }}>

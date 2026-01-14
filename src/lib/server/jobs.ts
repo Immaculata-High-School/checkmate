@@ -6,7 +6,8 @@ export type JobType =
   | 'STUDY_GUIDE'
   | 'WORKSHEET_GENERATION'
   | 'FLASHCARD_GENERATION'
-  | 'TEST_GRADING';
+  | 'TEST_GRADING'
+  | 'WRITING_ASSISTANT';
 
 export type JobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
 
@@ -58,6 +59,12 @@ export interface JobInput {
       questionType: string;
       points: number;
     }>;
+  };
+  WRITING_ASSISTANT: {
+    prompt: string;
+    currentContent: string;
+    title: string;
+    documentId: string;
   };
 }
 
@@ -399,6 +406,44 @@ async function processJob(jobId: string) {
         notificationTitle = 'Test Graded';
         notificationMessage = `Test "${input.testTitle}" has been graded: ${gradingResult.totalScore}/${gradingResult.totalPoints} points.`;
         notificationLink = `/teacher/tests`; // Could link to specific submission
+        break;
+      }
+
+      case 'WRITING_ASSISTANT': {
+        const input = job.input as JobInput['WRITING_ASSISTANT'];
+
+        // Update progress
+        await prisma.aIJob.update({
+          where: { id: jobId },
+          data: { progress: 30 }
+        });
+
+        // Generate content
+        const aiResult = await shuttleAI.writingAssistant(
+          {
+            prompt: input.prompt,
+            currentContent: input.currentContent,
+            title: input.title
+          },
+          context
+        );
+
+        // Update progress
+        await prisma.aIJob.update({
+          where: { id: jobId },
+          data: { progress: 90 }
+        });
+
+        result = {
+          content: aiResult.content,
+          documentId: input.documentId,
+          prompt: input.prompt
+        };
+        entityId = input.documentId;
+        entityType = 'DOCUMENT';
+        notificationTitle = 'AI Writing Complete';
+        notificationMessage = `AI has generated content for "${input.title}".`;
+        notificationLink = `/teacher/docs/${input.documentId}`;
         break;
       }
 

@@ -306,8 +306,8 @@
         <div>
           <div class="flex items-center gap-3 mb-2">
             <h1 class="text-2xl font-bold text-gray-900">{data.test.title}</h1>
-            <span class="badge {data.test.status === 'PUBLISHED' ? 'badge-green' : 'badge-gray'}">
-              {data.test.status === 'PUBLISHED' ? 'Published' : 'Draft'}
+            <span class="badge {data.test.status === 'PUBLISHED' ? 'badge-green' : 'badge-gray'}" title="{data.test.status === 'PUBLISHED' ? 'Students can access this test' : 'Not yet visible to students'}">
+              {data.test.status === 'PUBLISHED' ? 'Open' : 'Draft'}
             </span>
           </div>
           {#if data.test.description}
@@ -344,13 +344,16 @@
 
         {#if data.test.status === 'DRAFT'}
           <form method="POST" action="?/publish" use:enhance>
-            <button type="submit" class="btn btn-primary"> Publish </button>
+            <button type="submit" class="btn btn-primary" title="Make this test available for students to take">
+              <Eye class="w-4 h-4" />
+              Open for Students
+            </button>
           </form>
         {:else}
           <form method="POST" action="?/unpublish" use:enhance>
-            <button type="submit" class="btn btn-secondary">
+            <button type="submit" class="btn btn-secondary" title="Students will no longer be able to access this test">
               <EyeOff class="w-4 h-4" />
-              Unpublish
+              Close Test
             </button>
           </form>
         {/if}
@@ -464,15 +467,16 @@
 
     <!-- Sidebar -->
     <div class="space-y-6">
-      <!-- Assign to Class -->
+      <!-- Link to Class -->
       <div class="card">
         <div class="px-4 py-3 border-b border-gray-200">
-          <h3 class="font-semibold text-gray-900">Assign to Class</h3>
+          <h3 class="font-semibold text-gray-900">Link to Class</h3>
+          <p class="text-xs text-gray-500 mt-1">Link this test to a class so students in that class can see it</p>
         </div>
         <div class="p-4">
           {#if data.test.classes.length > 0}
             <div class="mb-4">
-              <div class="text-sm text-gray-500 mb-2">Assigned Classes</div>
+              <div class="text-sm text-gray-500 mb-2">Linked Classes</div>
               <div class="space-y-2">
                 {#each data.test.classes as { class: cls }}
                   <div class="flex items-center gap-2 text-sm">
@@ -493,7 +497,7 @@
             </select>
             <button type="submit" disabled={!selectedClassId} class="btn btn-primary w-full">
               <Plus class="w-4 h-4" />
-              Assign
+              Link to Class
             </button>
           </form>
         </div>

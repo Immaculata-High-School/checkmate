@@ -52,6 +52,7 @@
   // Check if we're on a page with specific assistant behavior
   const isTestEditPage = $derived($page.url.pathname.includes('/teacher/tests/') && $page.url.pathname.includes('/edit'));
   const isWorksheetEditPage = $derived($page.url.pathname.includes('/teacher/worksheets/') && $page.url.pathname.includes('/edit'));
+  const isDocsPage = $derived($page.url.pathname.includes('/teacher/docs/') || $page.url.pathname.includes('/student/docs/'));
 
   async function sendMessage() {
     if (!inputValue.trim() || storeState.loading) return;
@@ -141,7 +142,7 @@
 </script>
 
 <!-- Skip rendering on test edit page since it has its own assistant -->
-{#if !isTestEditPage && !isWorksheetEditPage}
+{#if !isTestEditPage && !isWorksheetEditPage && !isDocsPage}
 <div class="fixed bottom-4 right-4 z-50">
   {#if !storeState.open}
     <button

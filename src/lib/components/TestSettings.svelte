@@ -151,13 +151,13 @@
           </div>
 
           <div class="form-group">
-            <label class="label">Auto-Unpublish At</label>
+            <label class="label">Auto-Close At</label>
             <input
               type="datetime-local"
               bind:value={settings.autoUnpublishAt}
               class="input"
             />
-            <p class="text-xs text-gray-500 mt-1">Test will be automatically unpublished</p>
+            <p class="text-xs text-gray-500 mt-1">Test will automatically close and become unavailable to students</p>
           </div>
         </div>
 

@@ -8,6 +8,7 @@
     Clock,
     CheckCircle,
     AlertCircle,
+    AlertTriangle,
     X,
     Search,
     Sparkles,
@@ -26,7 +27,8 @@
     Upload,
     ExternalLink,
     Link,
-    Save
+    Save,
+    Calendar
   } from 'lucide-svelte';
   import type { PageData, ActionData } from './$types';
 
@@ -43,6 +45,7 @@
   let showBonusModal = $state(false);
   let showPowerSchoolModal = $state(false);
   let showPsJobStartedModal = $state(false);
+  let showRosterSyncNeededModal = $state(false);
   let psReleasing = $state(false);
   let bonusAmount = $state(0);
   let bonusTarget = $state<'selected' | 'all' | 'single'>('selected');
@@ -51,13 +54,20 @@
   let searchQuery = $state(data.filters.search);
   let selectedSubmissions = $state<Set<string>>(new Set());
   
-  // PowerSchool release form state
+  // PowerSchool release form state - auto-select linked class if only one
   let psSelectedClass = $state('');
   let psAssignmentName = $state(data.test.title);
   let psSelectedCategory = $state('');
   let psDueDate = $state(new Date().toISOString().split('T')[0]);
+  let psSelectedTerm = $state('');
   let psForceRerelease = $state(false);
   let psMarkMissing = $state(false);
+  
+  // PowerSchool lazy-loaded data
+  let psCategories = $state<any[]>([]);
+  let psTerms = $state<{ current_term: string; store_codes: string[] } | null>(null);
+  let psLoadingData = $state(false);
+  let psDataError = $state<string | null>(null);
 
   // PowerSchool stats - computed from submissions
   let psGradedCount = $derived(
@@ -74,6 +84,67 @@
     const cls = linkedClasses.find((c: any) => c.id === psSelectedClass);
     return cls?.rosterSynced ?? false;
   });
+  
+  // Get the linked class info
+  let linkedClass = $derived(() => {
+    const linkedClasses = (data as any).powerSchool?.linkedClasses || [];
+    return linkedClasses.length > 0 ? linkedClasses[0] : null;
+  });
+
+  // Load PowerSchool data when opening the modal
+  async function loadPowerSchoolData() {
+    if (psCategories.length > 0) return; // Already loaded
+    
+    psLoadingData = true;
+    psDataError = null;
+    
+    try {
+      const response = await fetch('/api/powerschool?action=sync-data');
+      const result = await response.json();
+      
+      if (result.error) {
+        psDataError = result.error;
+      } else {
+        psCategories = result.categories || [];
+        psTerms = result.terms;
+        
+        // Set default term to current term
+        if (result.terms?.current_term) {
+          psSelectedTerm = result.terms.current_term;
+        }
+        
+        // Set default category from linked class if available
+        const cls = linkedClass();
+        if (cls?.psCategoryId) {
+          psSelectedCategory = cls.psCategoryId.toString();
+        }
+      }
+    } catch (e) {
+      psDataError = 'Failed to load PowerSchool data';
+      console.error('Error loading PS data:', e);
+    } finally {
+      psLoadingData = false;
+    }
+  }
+
+  // Check if any linked class has unsynced roster
+  async function checkRosterAndOpenModal() {
+    const linkedClasses = (data as any).powerSchool?.linkedClasses || [];
+    const hasUnsyncedClass = linkedClasses.some((c: any) => !c.rosterSynced);
+    
+    // Auto-select the first linked class
+    if (linkedClasses.length > 0) {
+      psSelectedClass = linkedClasses[0].id;
+    }
+    
+    if (hasUnsyncedClass && linkedClasses.length > 0) {
+      // Show warning modal first
+      showRosterSyncNeededModal = true;
+    } else {
+      showPowerSchoolModal = true;
+      await loadPowerSchoolData();
+    }
+  }
 
   function applyFilters() {
     const params = new URLSearchParams();
@@ -249,13 +320,12 @@
               Link Classes
             </a>
           {:else}
-            <button onclick={() => (showPowerSchoolModal = true)} class="btn btn-secondary bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100" disabled={data.stats.graded === 0}>
+            <button onclick={checkRosterAndOpenModal} class="btn btn-secondary bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100" disabled={data.stats.graded === 0}>
               <School class="w-4 h-4" />
               Release to PowerSchool
             </button>
           {/if}
         {/if}
-
         <form method="POST" action="?/generateClassFeedback" use:enhance={() => {
           generatingFeedback = true;
           return async ({ result, update }) => {
@@ -325,7 +395,7 @@
       <div class="flex-1">
         <p class="font-medium">{form?.message}</p>
         {#if (form as any).errors?.length}
-          <details class="mt-2" open={form?.errors?.length <= 5}>
+          <details class="mt-2" open={(form as any).errors?.length <= 5}>
             <summary class="text-sm cursor-pointer hover:underline">
               {(form as any).errors.length} student{(form as any).errors.length !== 1 ? 's' : ''} couldn't be matched
             </summary>
@@ -1009,76 +1079,99 @@
           await invalidateAll();
         };
       }}>
-        <!-- Class Selection -->
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 mb-1">
-            PowerSchool Class
-          </label>
-          <select 
-            name="classId" 
-            bind:value={psSelectedClass}
-            class="input w-full"
-            required
-          >
-            <option value="">Select a class...</option>
-            {#each (data as any).powerSchool.linkedClasses as cls}
-              <option value={cls.id} disabled={!cls.rosterSynced}>
-                {cls.name} → {cls.psSection} {cls.rosterSynced ? `(${cls.mappedStudents} synced)` : '⚠️ Roster not synced'}
-              </option>
-            {/each}
-          </select>
-          {#if (data as any).powerSchool.linkedClasses.length === 0}
-            <p class="text-xs text-amber-600 mt-1">
-              No linked classes found. <a href="/teacher/settings" class="underline">Link a class first</a>
-            </p>
-          {:else}
-            {@const selectedClassData = (data as any).powerSchool.linkedClasses.find((c: any) => c.id === psSelectedClass)}
-            {#if psSelectedClass && selectedClassData && !selectedClassData.rosterSynced}
-              <div class="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
-                <AlertCircle class="w-4 h-4 inline mr-1" />
-                <strong>Roster not synced!</strong> You must sync the roster before releasing grades.
-                <a href="/teacher/classes/{psSelectedClass}" class="underline font-medium ml-1">
-                  Sync Roster →
-                </a>
+        <!-- Hidden class ID - auto-selected -->
+        <input type="hidden" name="classId" value={psSelectedClass} />
+        
+        <!-- Loading state -->
+        {#if psLoadingData}
+          <div class="text-center py-8">
+            <Loader2 class="w-8 h-8 text-blue-500 mx-auto mb-3 animate-spin" />
+            <p class="text-gray-500">Loading PowerSchool data...</p>
+          </div>
+        {:else if psDataError}
+          <div class="text-center py-8">
+            <AlertCircle class="w-8 h-8 text-red-400 mx-auto mb-3" />
+            <p class="text-red-600 mb-3">{psDataError}</p>
+            <button type="button" onclick={loadPowerSchoolData} class="btn btn-secondary">
+              Try Again
+            </button>
+          </div>
+        {:else}
+          <!-- Linked Class Info -->
+          {@const cls = linkedClass()}
+          {#if cls}
+            <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-medium text-blue-800">{cls.name}</p>
+                  <p class="text-xs text-blue-600">→ {cls.psSection} ({cls.mappedStudents} students synced)</p>
+                </div>
+                {#if cls.rosterSynced}
+                  <CheckCircle class="w-5 h-5 text-green-500" />
+                {:else}
+                  <a href="/teacher/classes/{cls.id}" class="text-amber-600 hover:text-amber-700 text-xs underline">
+                    Sync Roster
+                  </a>
+                {/if}
               </div>
-            {/if}
+            </div>
           {/if}
-        </div>
 
-        <!-- Assignment Name -->
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 mb-1">
-            Assignment Name in PowerSchool
-          </label>
-          <input 
-            type="text" 
-            name="assignmentName" 
-            bind:value={psAssignmentName}
-            class="input w-full"
-            placeholder={data.test.title}
-          />
-        </div>
+          <!-- Assignment Name -->
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Assignment Name in PowerSchool
+            </label>
+            <input 
+              type="text" 
+              name="assignmentName" 
+              bind:value={psAssignmentName}
+              class="input w-full"
+              placeholder={data.test.title}
+            />
+          </div>
 
-        <!-- Category -->
-        <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-700 mb-1">
-            Category <span class="text-red-500">*</span>
-          </label>
-          <select 
-            name="categoryId" 
-            bind:value={psSelectedCategory}
-            class="input w-full"
-            required
-          >
-            <option value="">Select a category...</option>
-            {#each (data as any).powerSchool.categories as cat}
-              <option value={cat.id}>{cat.name}</option>
-            {/each}
-          </select>
-          <p class="text-xs text-gray-500 mt-1">e.g. Quiz, Major Grade, Homework</p>
-        </div>
+          <!-- Category -->
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Category <span class="text-red-500">*</span>
+            </label>
+            <select 
+              name="categoryId" 
+              bind:value={psSelectedCategory}
+              class="input w-full"
+              required
+            >
+              <option value="">Select a category...</option>
+              {#each psCategories as cat}
+                <option value={cat.id}>{cat.name}</option>
+              {/each}
+            </select>
+            <p class="text-xs text-gray-500 mt-1">e.g. Quiz, Major Grade, Homework</p>
+            </div>
 
-        <!-- Due Date -->
+          <!-- Term Selection -->
+          {#if psTerms && psTerms.store_codes && psTerms.store_codes.length > 0}
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-gray-700 mb-1">
+                Grading Period / Term
+              </label>
+              <select 
+                name="term" 
+                bind:value={psSelectedTerm}
+                class="input w-full"
+              >
+                {#each psTerms.store_codes as term}
+                  <option value={term}>
+                    {term} {term === psTerms.current_term ? '(Current)' : ''}
+                  </option>
+                {/each}
+              </select>
+              <p class="text-xs text-gray-500 mt-1">Select the grading period for this assignment</p>
+            </div>
+          {/if}
+
+          <!-- Due Date -->
         <div class="mb-4">
           <label class="block text-sm font-medium text-gray-700 mb-1">
             Due Date
@@ -1110,74 +1203,75 @@
               </div>
             </label>
           </div>
-        {/if}
+          {/if}
 
-        <!-- Mark missing students option -->
-        <div class="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-          <label class="flex items-start gap-2 cursor-pointer">
-            <input 
-              type="checkbox" 
-              name="markMissing" 
-              value="true"
-              bind:checked={psMarkMissing}
-              class="mt-0.5"
-            />
-            <div>
-              <span class="text-sm font-medium text-gray-800">Mark missing students</span>
-              <p class="text-xs text-gray-600 mt-0.5">
-                Students who haven't submitted will be marked as "Missing" with a 0 in PowerSchool
+          <!-- Mark missing students option -->
+          <div class="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input 
+                type="checkbox" 
+                name="markMissing" 
+                value="true"
+                bind:checked={psMarkMissing}
+                class="mt-0.5"
+              />
+              <div>
+                <span class="text-sm font-medium text-gray-800">Mark missing students</span>
+                <p class="text-xs text-gray-600 mt-0.5">
+                  Students who haven't submitted will be marked as "Missing" with a 0 in PowerSchool
+                </p>
+              </div>
+            </label>
+          </div>
+
+          <!-- Summary -->
+          {#if psSelectedClass && !selectedClassRosterSynced()}
+            <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4">
+              <p class="text-sm text-amber-800 flex items-center gap-2">
+                <AlertTriangle class="w-4 h-4 flex-shrink-0" />
+                <span>This class hasn't synced its roster with PowerSchool. <a href="/teacher/classes/{psSelectedClass}" class="underline font-medium">Sync roster first →</a></span>
               </p>
             </div>
-          </label>
-        </div>
-
-        <!-- Summary -->
-        {#if psSelectedClass && !selectedClassRosterSynced()}
-          <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4">
-            <p class="text-sm text-amber-800 flex items-center gap-2">
-              <AlertTriangle class="w-4 h-4 flex-shrink-0" />
-              <span>This class hasn't synced its roster with PowerSchool. <a href="/teacher/classes/{psSelectedClass}" class="underline font-medium">Sync roster first →</a></span>
+          {/if}
+          <div class="p-3 bg-gray-50 rounded-lg mb-4">
+            <p class="text-sm text-gray-600">
+              {#if psForceRerelease}
+                <strong>{data.stats.graded}</strong> graded submission{data.stats.graded !== 1 ? 's' : ''} will be released/updated.
+              {:else}
+                <strong>{psGradedCount}</strong> graded submission{psGradedCount !== 1 ? 's' : ''} will be released.
+              {/if}
+              {#if selectedSubmissions.size > 0}
+                <br /><span class="text-indigo-600">(Only {selectedSubmissions.size} selected)</span>
+              {/if}
             </p>
           </div>
-        {/if}
-        <div class="p-3 bg-gray-50 rounded-lg mb-4">
-          <p class="text-sm text-gray-600">
-            {#if psForceRerelease}
-              <strong>{data.stats.graded}</strong> graded submission{data.stats.graded !== 1 ? 's' : ''} will be released/updated.
-            {:else}
-              <strong>{psGradedCount}</strong> graded submission{psGradedCount !== 1 ? 's' : ''} will be released.
-            {/if}
-            {#if selectedSubmissions.size > 0}
-              <br /><span class="text-indigo-600">(Only {selectedSubmissions.size} selected)</span>
-            {/if}
-          </p>
-        </div>
 
-        <!-- Hidden submission IDs if any selected -->
-        {#if selectedSubmissions.size > 0}
-          {#each [...selectedSubmissions] as id}
-            <input type="hidden" name="submissionIds" value={id} />
-          {/each}
-        {/if}
+          <!-- Hidden submission IDs if any selected -->
+          {#if selectedSubmissions.size > 0}
+            {#each [...selectedSubmissions] as id}
+              <input type="hidden" name="submissionIds" value={id} />
+            {/each}
+          {/if}
 
-        <div class="flex gap-3">
-          <button type="button" onclick={() => (showPowerSchoolModal = false)} class="btn btn-secondary flex-1">
-            Cancel
-          </button>
-          <button 
-            type="submit" 
-            class="btn btn-primary flex-1 bg-blue-600 hover:bg-blue-700"
-            disabled={psReleasing || !psSelectedClass || !psSelectedCategory || (psGradedCount === 0 && !psForceRerelease) || !selectedClassRosterSynced()}
-          >
-            {#if psReleasing}
-              <Loader2 class="w-4 h-4 animate-spin" />
-              {psForceRerelease ? 'Updating...' : 'Releasing...'}
-            {:else}
-              <Upload class="w-4 h-4" />
-              {psForceRerelease ? 'Update Grades' : 'Release Grades'}
-            {/if}
-          </button>
-        </div>
+          <div class="flex gap-3">
+            <button type="button" onclick={() => (showPowerSchoolModal = false)} class="btn btn-secondary flex-1">
+              Cancel
+            </button>
+            <button 
+              type="submit" 
+              class="btn btn-primary flex-1 bg-blue-600 hover:bg-blue-700"
+              disabled={psReleasing || !psSelectedClass || !psSelectedCategory || (psGradedCount === 0 && !psForceRerelease) || !selectedClassRosterSynced()}
+            >
+              {#if psReleasing}
+                <Loader2 class="w-4 h-4 animate-spin" />
+                {psForceRerelease ? 'Updating...' : 'Releasing...'}
+              {:else}
+                <Upload class="w-4 h-4" />
+                {psForceRerelease ? 'Update Grades' : 'Release Grades'}
+              {/if}
+            </button>
+          </div>
+        {/if}
       </form>
     </div>
   </div>
@@ -1217,6 +1311,58 @@
           <ExternalLink class="w-4 h-4" />
           View Compute Jobs
         </a>
+      </div>
+    </div>
+  </div>
+{/if}
+<!-- Roster Sync Needed Modal -->
+{#if showRosterSyncNeededModal}
+  <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
+          <AlertTriangle class="w-6 h-6 text-amber-600" />
+        </div>
+        <div>
+          <h2 class="text-lg font-bold text-gray-900">Student Accounts Not Linked</h2>
+          <p class="text-sm text-gray-500">Some classes need roster sync</p>
+        </div>
+      </div>
+      
+      <p class="text-gray-600 mb-4">
+        Before you can sync grades to PowerSchool, you need to connect your Checkmate students to their PowerSchool accounts.
+      </p>
+      
+      <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+        <h3 class="font-medium text-amber-800 mb-2">Classes needing roster sync:</h3>
+        <ul class="space-y-2">
+          {#each (data as any).powerSchool?.linkedClasses?.filter((c: any) => !c.rosterSynced) || [] as cls}
+            <li class="flex items-center justify-between text-sm">
+              <span class="text-amber-700">{cls.name}</span>
+              <a 
+                href="/teacher/classes/{cls.id}" 
+                class="text-amber-800 hover:text-amber-900 underline font-medium"
+              >
+                Sync Roster →
+              </a>
+            </li>
+          {/each}
+        </ul>
+      </div>
+      
+      <div class="flex gap-3">
+        <button 
+          onclick={() => (showRosterSyncNeededModal = false)} 
+          class="btn btn-secondary flex-1"
+        >
+          Cancel
+        </button>
+        <button 
+          onclick={async () => { showRosterSyncNeededModal = false; showPowerSchoolModal = true; await loadPowerSchoolData(); }} 
+          class="btn btn-primary flex-1"
+        >
+          Continue Anyway
+        </button>
       </div>
     </div>
   </div>

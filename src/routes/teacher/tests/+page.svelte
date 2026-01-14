@@ -84,8 +84,8 @@
               </div>
             </div>
             <div class="flex items-center gap-3">
-              <span class="badge {test.status === 'PUBLISHED' ? 'badge-green' : 'badge-gray'}">
-                {test.status === 'PUBLISHED' ? 'Published' : 'Draft'}
+              <span class="badge {test.status === 'PUBLISHED' ? 'badge-green' : 'badge-gray'}" title="{test.status === 'PUBLISHED' ? 'Students can access this test' : 'Not yet visible to students'}">
+                {test.status === 'PUBLISHED' ? 'Open' : 'Draft'}
               </span>
               <span class="text-sm text-gray-500">
                 {new Date(test.createdAt).toLocaleDateString()}

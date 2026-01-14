@@ -55,6 +55,29 @@ export const GET: RequestHandler = async ({ url, locals }) => {
         return json({ mapping });
       }
 
+      case 'terms': {
+        const termsData = await powerSchool.getTerms(locals.user.id);
+        return json({
+          current_term: termsData.current_term,
+          store_codes: termsData.store_codes
+        });
+      }
+
+      case 'sync-data': {
+        // Get categories and terms in one call for the sync modal
+        const [categories, termsData] = await Promise.all([
+          powerSchool.getCategories(locals.user.id),
+          powerSchool.getTerms(locals.user.id).catch(() => null)
+        ]);
+        return json({
+          categories,
+          terms: termsData ? {
+            current_term: termsData.current_term,
+            store_codes: termsData.store_codes
+          } : null
+        });
+      }
+
       case 'auth-url': {
         const state = crypto.randomUUID();
         const authUrl = powerSchool.getAuthorizationUrl(state, url.origin);

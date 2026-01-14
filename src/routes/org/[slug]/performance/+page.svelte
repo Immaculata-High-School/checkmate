@@ -259,8 +259,8 @@
                 </span>
               </td>
               <td class="px-4 py-3">
-                <span class="badge {test.status === 'PUBLISHED' ? 'badge-green' : test.status === 'DRAFT' ? 'badge-gray' : 'badge-amber'}">
-                  {test.status}
+                <span class="badge {test.status === 'PUBLISHED' ? 'badge-green' : test.status === 'DRAFT' ? 'badge-gray' : 'badge-amber'}" title="{test.status === 'PUBLISHED' ? 'Students can access this test' : 'Not yet visible to students'}">
+                  {test.status === 'PUBLISHED' ? 'Open' : test.status === 'DRAFT' ? 'Draft' : test.status}
                 </span>
               </td>
             </tr>

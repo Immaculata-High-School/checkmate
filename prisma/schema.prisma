@@ -159,6 +159,8 @@ model User {
   powerSchoolReleases PowerSchoolGradeRelease[]
   powerSchoolMappings PowerSchoolStudentMapping[] @relation("PowerSchoolMappings")
   powerSchoolMappingsCreated PowerSchoolStudentMapping[] @relation("PowerSchoolMappingsCreated")
+  ownedDocuments      Document[] @relation("OwnedDocuments")
+  sharedDocuments     DocumentShare[] @relation("SharedDocuments")
 
   @@index([email])
   @@index([platformRole])
@@ -245,6 +247,7 @@ model Organization {
   billingTransactions BillingTransaction[]
   voucherRedemptions VoucherRedemption[]
   featureRequests    FeatureRequest[]
+  documents          Document[]
 
   @@index([slug])
   @@index([type])
@@ -392,6 +395,7 @@ model Class {
   tests                ClassTest[]
   powerSchoolMapping   PowerSchoolClassMapping?
   powerSchoolStudentMappings PowerSchoolStudentMapping[]
+  documentShares       DocumentClassShare[]
 
   @@index([joinCode])
   @@index([teacherId])
@@ -1012,6 +1016,69 @@ model GradingQueue {
   @@index([studentId])
   @@index([createdAt])
   @@index([status, createdAt])
+}
+
+// ============================================================================
+// DOCUMENTS (Google Docs-like feature)
+// ============================================================================
+
+enum DocumentVisibility {
+  PRIVATE       // Only creator can see
+  SHARED        // Shared with specific users/classes
+  PUBLIC        // Anyone with link can view (within org)
+}
+
+model Document {
+  id             String             @id @default(cuid())
+  title          String             @default("Untitled Document")
+  content        String             @default("") @db.Text      // HTML content from rich text editor
+  ownerId        String                                        // User who created the document
+  organizationId String?                          // Organization scope (optional)
+  visibility     DocumentVisibility @default(PRIVATE)
+  isArchived     Boolean            @default(false)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  // Relations
+  owner        User                 @relation("OwnedDocuments", fields: [ownerId], references: [id], onDelete: Cascade)
+  organization Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  shares       DocumentShare[]
+  classShares  DocumentClassShare[]
+
+  @@index([ownerId])
+  @@index([organizationId])
+  @@index([visibility])
+  @@index([createdAt])
+}
+
+model DocumentShare {
+  id         String   @id @default(cuid())
+  documentId String
+  userId     String
+  canEdit    Boolean  @default(false)  // false = view only, true = can edit
+  createdAt  DateTime @default(now())
+
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user       User     @relation("SharedDocuments", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, userId])
+  @@index([userId])
+  @@index([documentId])
+}
+
+model DocumentClassShare {
+  id         String   @id @default(cuid())
+  documentId String
+  classId    String
+  canEdit    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  class      Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, classId])
+  @@index([classId])
+  @@index([documentId])
 }
 
 // ============================================================================

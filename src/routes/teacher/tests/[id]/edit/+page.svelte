@@ -28,7 +28,8 @@
       options: q.options || [],
       correctAnswer: q.correctAnswer || '',
       points: q.points,
-      aiGenerated: q.aiGenerated
+      aiGenerated: q.aiGenerated,
+      programmingLanguage: (q.options as any)?.programmingLanguage || 'python'
     }))
   );
 
