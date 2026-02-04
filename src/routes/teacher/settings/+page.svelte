@@ -125,7 +125,17 @@
     </div>
 
     <div class="p-6">
-      {#if !data.powerSchool.configured}
+      {#if data.powerSchool.disabled}
+        <div class="text-center py-8">
+          <div class="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-3">
+            <ExternalLink class="w-6 h-6 text-yellow-600" />
+          </div>
+          <p class="text-gray-700 font-medium mb-1">PowerSchool Integration Temporarily Disabled</p>
+          <p class="text-gray-500 text-sm">
+            The PowerSchool API is currently unavailable. Grade sync will resume when the service is restored.
+          </p>
+        </div>
+      {:else if !data.powerSchool.configured}
         <p class="text-gray-500 text-center py-8">
           PowerSchool integration has not been configured for this instance.<br />
           Please contact your administrator to set up the integration.

@@ -10,12 +10,14 @@ import { env } from '$env/dynamic/private';
 const POWERSCHOOL_API_URL = env.POWERSCHOOL_API_URL || '';
 const POWERSCHOOL_CLIENT_ID = env.POWERSCHOOL_CLIENT_ID || '';
 const POWERSCHOOL_CLIENT_SECRET = env.POWERSCHOOL_CLIENT_SECRET || '';
+const POWERSCHOOL_DISABLED = env.POWERSCHOOL_DISABLED === 'true';
 
 export interface PowerSchoolConfig {
   apiUrl: string;
   clientId: string;
   clientSecret: string;
   isConfigured: boolean;
+  isDisabled: boolean;
 }
 
 export function getConfig(): PowerSchoolConfig {
@@ -23,7 +25,8 @@ export function getConfig(): PowerSchoolConfig {
     apiUrl: POWERSCHOOL_API_URL,
     clientId: POWERSCHOOL_CLIENT_ID,
     clientSecret: POWERSCHOOL_CLIENT_SECRET,
-    isConfigured: !!(POWERSCHOOL_API_URL && POWERSCHOOL_CLIENT_ID && POWERSCHOOL_CLIENT_SECRET)
+    isConfigured: !!(POWERSCHOOL_API_URL && POWERSCHOOL_CLIENT_ID && POWERSCHOOL_CLIENT_SECRET) && !POWERSCHOOL_DISABLED,
+    isDisabled: POWERSCHOOL_DISABLED
   };
 }
 

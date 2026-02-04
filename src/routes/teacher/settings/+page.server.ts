@@ -51,6 +51,7 @@ export const load: PageServerLoad = async ({ locals, url, cookies }) => {
   return {
     powerSchool: {
       configured: psConfig.isConfigured,
+      disabled: psConfig.isDisabled,
       connected: psStatus.connected,
       teacherName: psStatus.teacherName,
       teacherId: psStatus.teacherId,
