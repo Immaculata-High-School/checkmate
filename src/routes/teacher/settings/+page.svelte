@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
+  import { page } from '$app/stores';
   import {
     Settings,
     Link,
@@ -18,6 +19,9 @@
   import type { PageData, ActionData } from './$types';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
+
+  // Check if PowerSchool is enabled for the organization
+  const powerSchoolEnabled = $derived($page.data.powerSchoolEnabled ?? true);
 
   let connectingPS = $state(false);
   let savingMapping = $state<string | null>(null);
@@ -88,7 +92,8 @@
     </div>
   {/if}
 
-  <!-- PowerSchool Integration Section -->
+  <!-- PowerSchool Integration Section - Only show if enabled for the organization -->
+  {#if powerSchoolEnabled}
   <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-8">
     <div class="p-6 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
       <div class="flex items-center justify-between">
@@ -325,6 +330,7 @@
         Create Class
       </a>
     </div>
+  {/if}
   {/if}
 
   <!-- Account Settings Link -->

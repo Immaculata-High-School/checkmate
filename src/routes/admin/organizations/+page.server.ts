@@ -73,6 +73,7 @@ export const actions: Actions = {
     const ownerName = formData.get('ownerName')?.toString();
     const subscriptionTier = formData.get('subscriptionTier')?.toString() as any || 'FREE';
     const monthlyUserFee = parseFloat(formData.get('monthlyUserFee')?.toString() || '5');
+    const powerSchoolEnabled = formData.get('powerSchoolEnabled') === 'true';
 
     if (!name || !type || !ownerEmail || !ownerName) {
       return fail(400, { error: 'All fields are required' });
@@ -107,7 +108,8 @@ export const actions: Actions = {
         slug,
         type,
         subscriptionTier,
-        monthlyUserFee
+        monthlyUserFee,
+        powerSchoolEnabled
       }
     });
 

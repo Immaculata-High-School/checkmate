@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import { goto, invalidateAll } from '$app/navigation';
+  import { page } from '$app/stores';
   import {
     ArrowLeft,
     FileText,
@@ -33,6 +34,9 @@
   import type { PageData, ActionData } from './$types';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
+
+  // Check if PowerSchool is enabled for the organization
+  const powerSchoolEnabled = $derived($page.data.powerSchoolEnabled ?? true);
 
   let aiGrading = $state(false);
   let aiGradingAll = $state(false);
@@ -307,8 +311,8 @@
           </button>
         {/if}
 
-        <!-- PowerSchool Button - Always visible -->
-        {#if (data as any).powerSchool?.configured}
+        <!-- PowerSchool Button - Only show if enabled for organization -->
+        {#if powerSchoolEnabled && (data as any).powerSchool?.configured}
           {#if !(data as any).powerSchool?.connected}
             <a href="/teacher/settings" class="btn btn-secondary bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100">
               <School class="w-4 h-4" />
@@ -582,7 +586,7 @@
             <td class="px-4 py-4 text-center">
               <div class="flex items-center justify-center gap-1">
                 <span class="badge {status.class}">{status.text}</span>
-                {#if (submission as any).powerSchoolRelease?.success}
+                {#if powerSchoolEnabled && (submission as any).powerSchoolRelease?.success}
                   <span title="Released to PowerSchool" class="text-blue-500">
                     <School class="w-4 h-4" />
                   </span>

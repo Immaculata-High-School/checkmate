@@ -41,6 +41,17 @@ export const load: PageServerLoad = async ({ params, locals }) => {
           }
         }
       },
+      documentAssignments: {
+        include: {
+          document: {
+            select: { id: true, title: true }
+          },
+          studentCopies: {
+            select: { id: true, status: true, grade: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      },
       powerSchoolMapping: true,
       powerSchoolStudentMappings: true
     }
@@ -67,8 +78,31 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     };
   }
 
+  // Process document assignments with stats
+  const docAssignmentsWithStats = cls.documentAssignments.map(da => {
+    const totalStudents = cls.members.filter(m => m.role === 'STUDENT').length;
+    const submitted = da.studentCopies.filter(sc => sc.status === 'SUBMITTED' || sc.status === 'RESUBMITTED').length;
+    const graded = da.studentCopies.filter(sc => sc.grade !== null).length;
+    
+    return {
+      id: da.id,
+      documentId: da.document.id,
+      title: da.title || da.document.title,
+      type: da.type,
+      dueDate: da.dueDate,
+      points: da.points,
+      stats: {
+        totalStudents,
+        submitted,
+        graded,
+        copies: da.studentCopies.length
+      }
+    };
+  });
+
   return { 
     class: cls,
+    documentAssignments: docAssignmentsWithStats,
     rosterMappings: cls.powerSchoolStudentMappings,
     powerSchool: {
       configured: psConfig.isConfigured,

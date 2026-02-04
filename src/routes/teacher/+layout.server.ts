@@ -90,7 +90,8 @@ export const load: LayoutServerLoad = async ({ locals }) => {
               id: true,
               name: true,
               billingEnabled: true,
-              balance: true
+              balance: true,
+              powerSchoolEnabled: true
             }
           }
         }
@@ -146,6 +147,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     tests,
     runningJobsCount,
     orgDisabled,
-    disabledOrgName
+    disabledOrgName,
+    powerSchoolEnabled: teacherMembership?.organization?.powerSchoolEnabled ?? true
   };
 };

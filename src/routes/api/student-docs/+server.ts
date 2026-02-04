@@ -1,8 +1,14 @@
+import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
-import type { PageServerLoad } from './$types';
+import type { RequestHandler } from './$types';
 
-export const load: PageServerLoad = async ({ locals }) => {
-  const userId = locals.user!.id;
+// GET /api/student-docs - Get all student's document assignments
+export const GET: RequestHandler = async ({ locals }) => {
+  if (!locals.user) {
+    throw error(401, 'Not authenticated');
+  }
+
+  const userId = locals.user.id;
 
   // Get student's class memberships
   const classMemberships = await prisma.classMember.findMany({
@@ -11,22 +17,8 @@ export const load: PageServerLoad = async ({ locals }) => {
   });
   const classIds = classMemberships.map(m => m.classId);
 
-  // Get student's own documents (not from assignments)
-  const ownDocuments = await prisma.document.findMany({
-    where: {
-      ownerId: userId,
-      isArchived: false
-    },
-    include: {
-      owner: {
-        select: { id: true, name: true, email: true }
-      }
-    },
-    orderBy: { updatedAt: 'desc' }
-  });
-
   // Get VIEW_ONLY assignments (student sees the original doc)
-  const viewOnlyAssignments = classIds.length > 0 ? await prisma.documentAssignment.findMany({
+  const viewOnlyAssignments = await prisma.documentAssignment.findMany({
     where: {
       classId: { in: classIds },
       type: 'VIEW_ONLY'
@@ -36,6 +28,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         select: {
           id: true,
           title: true,
+          content: true,
           updatedAt: true,
           owner: { select: { id: true, name: true, email: true } }
         }
@@ -43,10 +36,10 @@ export const load: PageServerLoad = async ({ locals }) => {
       class: { select: { id: true, name: true, emoji: true } }
     },
     orderBy: { createdAt: 'desc' }
-  }) : [];
+  });
 
-  // Get student's MAKE_COPY documents (assigned work)
-  const studentDocuments = await prisma.studentDocument.findMany({
+  // Get student's MAKE_COPY documents
+  const studentDocs = await prisma.studentDocument.findMany({
     where: { studentId: userId },
     include: {
       assignment: {
@@ -65,19 +58,14 @@ export const load: PageServerLoad = async ({ locals }) => {
     orderBy: { updatedAt: 'desc' }
   });
 
-  // Transform own documents to match expected format
-  const ownDocsWithPermissions = ownDocuments.map(doc => ({
-    ...doc,
-    isOwner: true,
-    canEdit: true,
-    sharedVia: null,
-    type: 'own' as const
-  }));
-
-  return { 
-    documents: ownDocsWithPermissions,
-    viewOnlyAssignments,
-    studentDocuments
-  };
+  return json({
+    viewOnlyAssignments: viewOnlyAssignments.map(a => ({
+      ...a,
+      assignmentType: 'VIEW_ONLY' as const
+    })),
+    studentDocuments: studentDocs.map(d => ({
+      ...d,
+      assignmentType: 'MAKE_COPY' as const
+    }))
+  });
 };
-

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowLeft, Users, FileText, CheckCircle, Clock, BookMarked, ClipboardList, Library } from 'lucide-svelte';
+  import { ArrowLeft, Users, FileText, CheckCircle, Clock, BookMarked, ClipboardList, Library, Edit3, Eye, Calendar } from 'lucide-svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -8,8 +8,28 @@
     data.tests.length > 0 ||
     data.worksheets.length > 0 ||
     data.studyGuides.length > 0 ||
-    data.studySets.length > 0
+    data.studySets.length > 0 ||
+    data.documentAssignments.length > 0
   );
+
+  function getDocStatusBadge(assignment: typeof data.documentAssignments[0]) {
+    if (assignment.type === 'VIEW_ONLY') return { text: 'View', class: 'badge-blue' };
+    if (!assignment.studentDocId) return { text: 'Start', class: 'badge-blue' };
+    if (assignment.status === 'SUBMITTED') return { text: 'Submitted', class: 'badge-yellow' };
+    if (assignment.status === 'GRADED') return { text: `${assignment.grade || 0}%`, class: 'badge-green' };
+    return { text: 'In Progress', class: 'badge-yellow' };
+  }
+
+  function formatDueDate(date: Date | string | null) {
+    if (!date) return null;
+    const d = new Date(date);
+    const now = new Date();
+    const diffDays = Math.ceil((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) return 'Overdue';
+    if (diffDays === 0) return 'Due today';
+    if (diffDays === 1) return 'Due tomorrow';
+    return `Due ${d.toLocaleDateString()}`;
+  }
 </script>
 
 <div class="max-w-4xl mx-auto">
@@ -117,6 +137,38 @@
               <p class="text-sm text-gray-500">{studySet.cardCount} cards</p>
             </div>
             <span class="badge badge-purple">Practice</span>
+          </a>
+        {/each}
+
+        <!-- Document Assignments -->
+        {#each data.documentAssignments as docAssign}
+          {@const badge = getDocStatusBadge(docAssign)}
+          {@const dueText = formatDueDate(docAssign.dueDate)}
+          <a 
+            href={docAssign.href || '#'} 
+            class="p-4 flex items-center gap-4 hover:bg-gray-50 {!docAssign.href ? 'opacity-50 pointer-events-none' : ''}"
+          >
+            <div class="w-10 h-10 rounded-lg {docAssign.type === 'VIEW_ONLY' ? 'bg-cyan-100' : 'bg-indigo-100'} flex items-center justify-center">
+              {#if docAssign.type === 'VIEW_ONLY'}
+                <Eye class="w-5 h-5 text-cyan-600" />
+              {:else}
+                <Edit3 class="w-5 h-5 text-indigo-600" />
+              {/if}
+            </div>
+            <div class="flex-1">
+              <h3 class="font-medium text-gray-900">{docAssign.title}</h3>
+              <p class="text-sm text-gray-500">
+                {docAssign.type === 'VIEW_ONLY' ? 'View Document' : 'Document Assignment'}
+                {#if docAssign.points}· {docAssign.points} pts{/if}
+              </p>
+              {#if dueText}
+                <p class="text-xs text-gray-400 flex items-center gap-1 mt-1">
+                  <Calendar class="w-3 h-3" />
+                  {dueText}
+                </p>
+              {/if}
+            </div>
+            <span class="badge {badge.class}">{badge.text}</span>
           </a>
         {/each}
       </div>

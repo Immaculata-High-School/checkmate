@@ -41,6 +41,17 @@ export const load: PageServerLoad = async ({ params, locals }) => {
               }
             }
           },
+          documentAssignments: {
+            include: {
+              document: {
+                select: {
+                  id: true,
+                  title: true,
+                  owner: { select: { name: true } }
+                }
+              }
+            }
+          },
           _count: {
             select: { members: true }
           }
@@ -55,21 +66,40 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   // Get student's submissions for tests in this class
   const testIds = membership.class.tests.map(t => t.test.id);
-  const submissions = await prisma.testSubmission.findMany({
-    where: {
-      studentId: locals.user!.id,
-      testId: { in: testIds }
-    },
-    select: {
-      testId: true,
-      status: true,
-      score: true,
-      bonusPoints: true,
-      totalPoints: true
-    }
-  });
+  const [submissions, studentDocs] = await Promise.all([
+    prisma.testSubmission.findMany({
+      where: {
+        studentId: locals.user!.id,
+        testId: { in: testIds }
+      },
+      select: {
+        testId: true,
+        status: true,
+        score: true,
+        bonusPoints: true,
+        totalPoints: true
+      }
+    }),
+    // Get student's document copies for this class
+    prisma.studentDocument.findMany({
+      where: {
+        studentId: locals.user!.id,
+        assignment: {
+          classId: params.id
+        }
+      },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        grade: true,
+        assignmentId: true
+      }
+    })
+  ]);
 
   const submissionMap = new Map(submissions.map(s => [s.testId, s]));
+  const studentDocMap = new Map(studentDocs.map(sd => [sd.assignmentId, sd]));
 
   // Parse assignments
   const worksheets = membership.class.assignments
@@ -98,6 +128,27 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       description: a.studyGuide!.description
     }));
 
+  // Build document assignments
+  const documentAssignments = membership.class.documentAssignments.map(da => {
+    const studentDoc = studentDocMap.get(da.id);
+    return {
+      id: da.id,
+      documentId: da.document.id,
+      title: da.title || da.document.title,
+      type: da.type,
+      dueDate: da.dueDate,
+      points: da.points,
+      teacherName: da.document.owner.name,
+      // For MAKE_COPY, use student doc info; for VIEW_ONLY, no status
+      studentDocId: studentDoc?.id || null,
+      status: studentDoc?.status || null,
+      grade: studentDoc?.grade || null,
+      href: da.type === 'VIEW_ONLY' 
+        ? `/student/docs/${da.document.id}`
+        : studentDoc ? `/student/docs/work/${studentDoc.id}` : null
+    };
+  });
+
   return {
     class: membership.class,
     enrolledAt: membership.joinedAt,
@@ -110,6 +161,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       })),
     worksheets,
     studySets,
-    studyGuides
+    studyGuides,
+    documentAssignments
   };
 };

@@ -12,7 +12,9 @@
     Share2,
     ExternalLink,
     Lock,
-    Globe
+    Globe,
+    ClipboardList,
+    GraduationCap
   } from 'lucide-svelte';
   import type { PageData } from './$types';
 
@@ -205,6 +207,27 @@
                 <span class="text-xs text-gray-500">
                   Shared with {doc.classShares.length} class{doc.classShares.length !== 1 ? 'es' : ''}
                 </span>
+              </div>
+            {/if}
+
+            {#if doc.assignments.length > 0}
+              <div class="flex items-center gap-2 mt-2">
+                <div class="flex items-center gap-1">
+                  <ClipboardList class="w-3 h-3 text-emerald-500" />
+                  <span class="text-xs text-emerald-600 font-medium">
+                    {doc.assignments.length} assignment{doc.assignments.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                {#if doc.totalSubmissions > 0}
+                  <a 
+                    href="/teacher/docs/{doc.id}/submissions"
+                    onclick={(e) => e.stopPropagation()}
+                    class="flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium hover:bg-amber-200 transition-colors"
+                  >
+                    <GraduationCap class="w-3 h-3" />
+                    {doc.totalSubmissions} to review
+                  </a>
+                {/if}
               </div>
             {/if}
           </a>

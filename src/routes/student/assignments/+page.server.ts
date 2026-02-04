@@ -21,12 +21,13 @@ export const load: PageServerLoad = async ({ locals }) => {
       studyGuides: [],
       worksheets: [],
       studySets: [],
+      documentAssignments: [],
       totalTests: 0
     };
   }
 
   // Run all independent queries in parallel
-  const [classTests, allAssignments, submissions] = await Promise.all([
+  const [classTests, allAssignments, submissions, docAssignments, studentDocs] = await Promise.all([
     // Get all tests assigned to active classes
     prisma.classTest.findMany({
       where: {
@@ -96,6 +97,65 @@ export const load: PageServerLoad = async ({ locals }) => {
         startedAt: true,
         submittedAt: true
       }
+    }),
+    // Get VIEW_ONLY document assignments (students see the original document)
+    prisma.documentAssignment.findMany({
+      where: {
+        classId: { in: activeClassIds },
+        type: 'VIEW_ONLY'
+      },
+      select: {
+        id: true,
+        title: true,
+        instructions: true,
+        dueDate: true,
+        points: true,
+        type: true,
+        document: {
+          select: {
+            id: true,
+            title: true,
+            owner: { select: { name: true } }
+          }
+        },
+        class: { select: { id: true, name: true, emoji: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    }),
+    // Get student's MAKE_COPY document assignments
+    prisma.studentDocument.findMany({
+      where: {
+        studentId: locals.user!.id,
+        assignment: {
+          classId: { in: activeClassIds }
+        }
+      },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        grade: true,
+        submittedAt: true,
+        assignment: {
+          select: {
+            id: true,
+            title: true,
+            instructions: true,
+            dueDate: true,
+            points: true,
+            type: true,
+            document: {
+              select: {
+                id: true,
+                title: true,
+                owner: { select: { name: true } }
+              }
+            },
+            class: { select: { id: true, name: true, emoji: true } }
+          }
+        }
+      },
+      orderBy: { updatedAt: 'desc' }
     })
   ]);
 
@@ -148,6 +208,38 @@ export const load: PageServerLoad = async ({ locals }) => {
     }
   }
 
+  // Build unified document assignments list
+  const documentAssignments = [
+    // VIEW_ONLY assignments
+    ...docAssignments.map(a => ({
+      id: a.document.id,
+      assignmentId: a.id,
+      title: a.title || a.document.title,
+      type: 'VIEW_ONLY' as const,
+      status: null as string | null,
+      dueDate: a.dueDate,
+      points: a.points,
+      grade: null as number | null,
+      class: a.class,
+      teacherName: a.document.owner.name,
+      href: `/student/docs/${a.document.id}`
+    })),
+    // MAKE_COPY assignments (student's own copies)
+    ...studentDocs.map(sd => ({
+      id: sd.id,
+      assignmentId: sd.assignment.id,
+      title: sd.title,
+      type: 'MAKE_COPY' as const,
+      status: sd.status,
+      dueDate: sd.assignment.dueDate,
+      points: sd.assignment.points,
+      grade: sd.grade,
+      class: sd.assignment.class,
+      teacherName: sd.assignment.document.owner.name,
+      href: `/student/docs/work/${sd.id}`
+    }))
+  ];
+
   const studyGuides = Array.from(studyGuideMap.values());
 
   const available = tests.filter(t => !t.submission || (t.submission.status === 'IN_PROGRESS'));
@@ -161,6 +253,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     studyGuides,
     worksheets,
     studySets,
+    documentAssignments,
     totalTests: tests.length
   };
 };

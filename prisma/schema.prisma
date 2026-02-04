@@ -161,6 +161,7 @@ model User {
   powerSchoolMappingsCreated PowerSchoolStudentMapping[] @relation("PowerSchoolMappingsCreated")
   ownedDocuments      Document[] @relation("OwnedDocuments")
   sharedDocuments     DocumentShare[] @relation("SharedDocuments")
+  studentDocuments    StudentDocument[] @relation("StudentDocuments")
 
   @@index([email])
   @@index([platformRole])
@@ -233,6 +234,9 @@ model Organization {
   billingEnabled     Boolean            @default(true) // Whether org has access (false when balance <= 0)
   lastBillingDate    DateTime?          // Last time monthly fees were charged
   monthlyUserFee     Float              @default(5) // $ per user per month
+
+  // Integrations
+  powerSchoolEnabled Boolean            @default(true) // Whether PowerSchool integration is enabled for this org
 
   // Relations
   members            OrganizationMember[]
@@ -396,6 +400,7 @@ model Class {
   powerSchoolMapping   PowerSchoolClassMapping?
   powerSchoolStudentMappings PowerSchoolStudentMapping[]
   documentShares       DocumentClassShare[]
+  documentAssignments  DocumentAssignment[]
 
   @@index([joinCode])
   @@index([teacherId])
@@ -1044,6 +1049,7 @@ model Document {
   organization Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   shares       DocumentShare[]
   classShares  DocumentClassShare[]
+  assignments  DocumentAssignment[]
 
   @@index([ownerId])
   @@index([organizationId])
@@ -1079,6 +1085,133 @@ model DocumentClassShare {
   @@unique([documentId, classId])
   @@index([classId])
   @@index([documentId])
+}
+
+// Document Assignment - like Google Classroom
+// When a teacher assigns a doc to a class, they choose:
+// - VIEW_ONLY: All students see the same doc (read-only)
+// - MAKE_COPY: Each student gets their own editable copy
+enum DocumentAssignmentType {
+  VIEW_ONLY
+  MAKE_COPY
+}
+
+enum DocumentSubmissionStatus {
+  NOT_STARTED   // Student hasn't opened yet
+  IN_PROGRESS   // Student is working on it
+  SUBMITTED     // Student submitted for review
+  RETURNED      // Teacher returned with feedback
+  RESUBMITTED   // Student resubmitted after return
+}
+
+model DocumentAssignment {
+  id              String                 @id @default(cuid())
+  documentId      String                 // The original document
+  classId         String                 // Class this is assigned to
+  type            DocumentAssignmentType @default(VIEW_ONLY)
+  title           String?                // Optional override title for the assignment
+  instructions    String?                @db.Text // Instructions for students
+  dueDate         DateTime?              // Optional due date
+  points          Int?                   // Optional points value
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  document        Document               @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  class           Class                  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  studentCopies   StudentDocument[]
+
+  @@unique([documentId, classId])
+  @@index([documentId])
+  @@index([classId])
+  @@index([dueDate])
+}
+
+// Student's copy of an assigned document (when type = MAKE_COPY)
+model StudentDocument {
+  id              String                    @id @default(cuid())
+  assignmentId    String                    // Which assignment this is for
+  studentId       String                    // Which student owns this copy
+  title           String                    @default("Untitled Document")
+  content         String                    @default("") @db.Text
+  status          DocumentSubmissionStatus  @default(NOT_STARTED)
+  submittedAt     DateTime?                 // When student submitted
+  returnedAt      DateTime?                 // When teacher returned
+  grade           Float?                    // Grade if teacher graded it
+  feedback        String?                   @db.Text // Teacher's feedback
+  monitoringEnabled Boolean                 @default(true) // Whether activity is being tracked
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  assignment      DocumentAssignment        @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student         User                      @relation("StudentDocuments", fields: [studentId], references: [id], onDelete: Cascade)
+  activityEvents  DocumentActivityEvent[]   // Activity tracking events
+  activitySummary DocumentActivitySummary?  // Aggregated analytics
+
+  @@unique([assignmentId, studentId])
+  @@index([assignmentId])
+  @@index([studentId])
+  @@index([status])
+}
+
+// Activity event types for document monitoring
+enum DocumentEventType {
+  KEYSTROKE       // Normal typing
+  PASTE           // Content pasted from clipboard
+  CUT             // Content cut
+  DELETE          // Content deleted (backspace/delete key)
+  UNDO            // Undo action
+  REDO            // Redo action
+  FOCUS           // Document gained focus
+  BLUR            // Document lost focus
+  SELECT          // Text selection
+  CURSOR_MOVE     // Cursor position change
+  SESSION_START   // Writing session started
+  SESSION_END     // Writing session ended
+}
+
+// Records individual activity events for document monitoring/proctoring
+model DocumentActivityEvent {
+  id              String              @id @default(cuid())
+  studentDocId    String              // Which student document this belongs to
+  eventType       DocumentEventType   // Type of event
+  timestamp       DateTime            @default(now()) // When event occurred
+  position        Int                 @default(0)     // Cursor position in document
+  endPosition     Int?                // End position for selections/ranges
+  content         String?             @db.Text        // Content added/pasted (for replay)
+  contentLength   Int                 @default(0)     // Length of content affected
+  sessionId       String?             // Group events by writing session
+  metadata        Json?               // Additional data (typing speed, source URL for paste, etc.)
+  
+  studentDocument StudentDocument     @relation(fields: [studentDocId], references: [id], onDelete: Cascade)
+
+  @@index([studentDocId])
+  @@index([studentDocId, timestamp])
+  @@index([sessionId])
+  @@index([eventType])
+}
+
+// Aggregated activity analytics for quick teacher review
+model DocumentActivitySummary {
+  id                    String          @id @default(cuid())
+  studentDocId          String          @unique
+  totalKeystrokes       Int             @default(0)
+  totalPastes           Int             @default(0)
+  totalPastedChars      Int             @default(0)
+  totalDeletes          Int             @default(0)
+  totalUndos            Int             @default(0)
+  totalWritingTime      Int             @default(0)     // In seconds
+  avgTypingSpeed        Float           @default(0)     // Characters per minute
+  focusLostCount        Int             @default(0)     // Times focus was lost
+  suspiciousPatterns    Int             @default(0)     // Number of flagged patterns
+  plagiarismScore       Float?                          // 0-100 plagiarism percentage if checked
+  lastCheckedAt         DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  
+  studentDocument       StudentDocument @relation(fields: [studentDocId], references: [id], onDelete: Cascade)
+
+  @@index([studentDocId])
+  @@index([suspiciousPatterns])
 }
 
 // ============================================================================

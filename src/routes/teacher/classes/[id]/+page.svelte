@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
+  import { page } from '$app/stores';
   import {
     ArrowLeft,
     Users,
@@ -21,7 +22,9 @@
     XCircle,
     Link2,
     Loader2,
-    ExternalLink
+    ExternalLink,
+    Edit3,
+    Eye
   } from 'lucide-svelte';
   import type { PageData, ActionData } from './$types';
 
@@ -30,6 +33,9 @@
   let editing = $state(false);
   let name = $state('');
   let description = $state('');
+  
+  // Check if PowerSchool is enabled for the organization
+  const powerSchoolEnabled = $derived($page.data.powerSchoolEnabled ?? true);
   
   // Sync name/description when data changes or editing opens
   $effect(() => {
@@ -49,7 +55,11 @@
   let loadingPsStudents = $state(false);
   let psStudentsError = $state<string | null>(null);
 
-  const hasAssignments = $derived(data.class.tests.length > 0 || data.class.assignments.length > 0);
+  const hasAssignments = $derived(
+    data.class.tests.length > 0 || 
+    data.class.assignments.length > 0 ||
+    data.documentAssignments.length > 0
+  );
   
   // Check if roster is synced
   const rosterSynced = $derived((data as any).rosterMappings?.length > 0);
@@ -230,7 +240,7 @@
         <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
           <h2 class="font-semibold text-gray-900">Students ({data.class.members.length})</h2>
           
-          {#if (data as any).powerSchool?.connected && psLinkedClass}
+          {#if powerSchoolEnabled && (data as any).powerSchool?.connected && psLinkedClass}
             <button 
               onclick={openRosterSyncModal}
               class="btn btn-sm {rosterSynced ? 'btn-secondary' : 'btn-primary bg-blue-600 hover:bg-blue-700'}"
@@ -241,12 +251,12 @@
                 <CheckCircle class="w-3 h-3 text-green-500" />
               {/if}
             </button>
-          {:else if (data as any).powerSchool?.connected}
+          {:else if powerSchoolEnabled && (data as any).powerSchool?.connected}
             <a href="/teacher/settings" class="btn btn-sm btn-secondary text-gray-500">
               <School class="w-4 h-4" />
               Link Class First
             </a>
-          {:else if (data as any).powerSchool?.configured}
+          {:else if powerSchoolEnabled && (data as any).powerSchool?.configured}
             <a href="/teacher/settings" class="btn btn-sm btn-secondary text-gray-500">
               <School class="w-4 h-4" />
               Connect PowerSchool
@@ -354,6 +364,31 @@
                   </div>
                 </a>
               {/if}
+            {/each}
+
+            <!-- Document Assignments -->
+            {#each data.documentAssignments as docAssign}
+              <a href="/teacher/docs/{docAssign.documentId}/submissions?classId={data.class.id}" class="block px-4 py-3 hover:bg-gray-50">
+                <div class="flex items-center gap-3">
+                  {#if docAssign.type === 'VIEW_ONLY'}
+                    <Eye class="w-4 h-4 text-cyan-500" />
+                  {:else}
+                    <Edit3 class="w-4 h-4 text-indigo-500" />
+                  {/if}
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium text-gray-900 text-sm truncate">{docAssign.title}</div>
+                    <div class="text-xs text-gray-500">
+                      {docAssign.type === 'VIEW_ONLY' ? 'View Only Document' : 'Document Assignment'}
+                      {#if docAssign.points} · {docAssign.points} pts{/if}
+                    </div>
+                  </div>
+                  {#if docAssign.type === 'MAKE_COPY'}
+                    <span class="text-xs text-gray-400">
+                      {docAssign.stats.submitted}/{docAssign.stats.totalStudents} submitted
+                    </span>
+                  {/if}
+                </div>
+              </a>
             {/each}
           </div>
         {/if}

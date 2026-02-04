@@ -22,6 +22,28 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
         include: {
           class: { select: { id: true, name: true, emoji: true } }
         }
+      },
+      assignments: {
+        include: {
+          class: { 
+            select: { 
+              id: true, 
+              name: true, 
+              emoji: true,
+              _count: {
+                select: { members: { where: { role: 'STUDENT' } } }
+              }
+            } 
+          },
+          studentCopies: {
+            select: {
+              id: true,
+              status: true,
+              grade: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
       }
     }
   });
@@ -49,22 +71,52 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
     throw error(403, 'You do not have access to this document');
   }
 
-  // Get classes for sharing (only for owner)
+  // Get classes for sharing/assigning (only for owner)
   const classes = isOwner ? await prisma.class.findMany({
     where: { teacherId: locals.user.id, archived: false },
-    select: { id: true, name: true, emoji: true },
+    select: { 
+      id: true, 
+      name: true, 
+      emoji: true,
+      _count: {
+        select: { members: { where: { role: 'STUDENT' } } }
+      }
+    },
     orderBy: { name: 'asc' }
   }) : [];
 
   const showShareModal = url.searchParams.get('share') === 'true';
+  const showAssignModal = url.searchParams.get('assign') === 'true';
+
+  // Process assignments to include stats
+  const assignmentsWithStats = document.assignments.map(a => {
+    const totalStudents = a.class._count.members;
+    const copies = a.studentCopies;
+    const submitted = copies.filter(c => c.status === 'SUBMITTED' || c.status === 'RESUBMITTED').length;
+    const graded = copies.filter(c => c.grade !== null).length;
+    
+    return {
+      ...a,
+      stats: {
+        totalStudents,
+        submitted,
+        graded,
+        notStarted: copies.filter(c => c.status === 'NOT_STARTED').length,
+        inProgress: copies.filter(c => c.status === 'IN_PROGRESS').length,
+        returned: copies.filter(c => c.status === 'RETURNED').length
+      }
+    };
+  });
 
   return { 
     document: {
       ...document,
+      assignments: assignmentsWithStats,
       isOwner,
       canEdit
     },
     classes,
-    showShareModal
+    showShareModal,
+    showAssignModal
   };
 };

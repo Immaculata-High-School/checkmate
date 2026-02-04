@@ -17,9 +17,37 @@ export const load: PageServerLoad = async ({ locals }) => {
         include: {
           class: { select: { id: true, name: true, emoji: true } }
         }
+      },
+      assignments: {
+        include: {
+          class: { select: { id: true, name: true, emoji: true } },
+          studentCopies: {
+            select: { id: true, status: true, grade: true }
+          }
+        }
       }
     },
     orderBy: { updatedAt: 'desc' }
+  });
+
+  // Process documents to include assignment stats
+  const documentsWithStats = documents.map(doc => {
+    const assignmentStats = doc.assignments.map(a => {
+      const submitted = a.studentCopies.filter(
+        sc => sc.status === 'SUBMITTED' || sc.status === 'RESUBMITTED'
+      ).length;
+      const graded = a.studentCopies.filter(sc => sc.grade !== null).length;
+      return {
+        ...a,
+        stats: { submitted, graded, total: a.studentCopies.length }
+      };
+    });
+    
+    return {
+      ...doc,
+      assignments: assignmentStats,
+      totalSubmissions: assignmentStats.reduce((sum, a) => sum + a.stats.submitted, 0)
+    };
   });
 
   // Get classes for sharing
@@ -29,5 +57,5 @@ export const load: PageServerLoad = async ({ locals }) => {
     orderBy: { name: 'asc' }
   });
 
-  return { documents, classes };
+  return { documents: documentsWithStats, classes };
 };

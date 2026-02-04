@@ -305,5 +305,23 @@ export const actions: Actions = {
     });
 
     return { success: true };
+  },
+
+  togglePowerSchool: async ({ params }) => {
+    const org = await prisma.organization.findUnique({
+      where: { id: params.id },
+      select: { powerSchoolEnabled: true }
+    });
+
+    if (!org) {
+      return fail(404, { error: 'Organization not found' });
+    }
+
+    await prisma.organization.update({
+      where: { id: params.id },
+      data: { powerSchoolEnabled: !org.powerSchoolEnabled }
+    });
+
+    return { success: true };
   }
 };

@@ -19,6 +19,7 @@
     autosave?: boolean;
     placeholder?: string;
     showWordCount?: boolean;
+    onactivity?: (event: { type: string; position: number; content?: string; length?: number }) => void;
   }
 
   let {
@@ -28,7 +29,8 @@
     onsave,
     autosave = false,
     placeholder = 'Start writing...',
-    showWordCount = false
+    showWordCount = false,
+    onactivity
   }: Props = $props();
 
   let editorEl: HTMLDivElement;
@@ -174,7 +176,66 @@
     if ((e.ctrlKey || e.metaKey) && e.key === 'p') { e.preventDefault(); printDocument(); }
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
       e.preventDefault();
-      execCommand(e.shiftKey ? 'redo' : 'undo');
+      const isRedo = e.shiftKey;
+      execCommand(isRedo ? 'redo' : 'undo');
+      // Track undo/redo
+      if (onactivity) {
+        const sel = window.getSelection();
+        const pos = sel?.anchorOffset || 0;
+        onactivity({ type: isRedo ? 'redo' : 'undo', position: pos });
+      }
+    }
+
+    // Track backspace/delete
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      if (onactivity) {
+        const sel = window.getSelection();
+        const pos = sel?.anchorOffset || 0;
+        const length = sel?.toString().length || 1;
+        onactivity({ type: 'delete', position: pos, length });
+      }
+    }
+  }
+
+  // Handle text input for activity tracking
+  function handleBeforeInput(e: InputEvent) {
+    if (!onactivity) return;
+    
+    const sel = window.getSelection();
+    const pos = sel?.anchorOffset || 0;
+    
+    if (e.inputType === 'insertText' && e.data) {
+      onactivity({ type: 'insert', position: pos, content: e.data, length: e.data.length });
+    } else if (e.inputType === 'insertFromPaste') {
+      // Paste is handled separately
+    } else if (e.inputType === 'deleteContentBackward' || e.inputType === 'deleteContentForward') {
+      const length = sel?.toString().length || 1;
+      onactivity({ type: 'delete', position: pos, length });
+    }
+  }
+
+  // Handle paste events
+  function handlePaste(e: ClipboardEvent) {
+    if (!onactivity) return;
+    
+    const pastedText = e.clipboardData?.getData('text/plain') || '';
+    if (pastedText) {
+      const sel = window.getSelection();
+      const pos = sel?.anchorOffset || 0;
+      onactivity({ type: 'paste', position: pos, content: pastedText, length: pastedText.length });
+    }
+  }
+
+  // Handle cut events
+  function handleCut(e: ClipboardEvent) {
+    if (!onactivity) return;
+    
+    const sel = window.getSelection();
+    const selectedText = sel?.toString() || '';
+    const pos = sel?.anchorOffset || 0;
+    
+    if (selectedText) {
+      onactivity({ type: 'cut', position: pos, content: selectedText, length: selectedText.length });
     }
   }
 
@@ -524,6 +585,9 @@
       contenteditable={!disabled}
       oninput={handleInput}
       onkeydown={handleKeydown}
+      onbeforeinput={handleBeforeInput}
+      onpaste={handlePaste}
+      oncut={handleCut}
       data-placeholder={placeholder}
       role="textbox"
       aria-multiline="true"

@@ -411,6 +411,45 @@
   <!-- Settings Tab -->
   {#if activeTab === 'settings'}
     <div class="space-y-6">
+      <!-- PowerSchool Integration Settings -->
+      <div class="card p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-teal-100 flex items-center justify-center">
+              <Globe class="w-6 h-6 text-teal-600" />
+            </div>
+            <div>
+              <h3 class="font-semibold text-gray-900 text-lg">PowerSchool Integration</h3>
+              <p class="text-gray-500">Enable or disable PowerSchool grade sync for this organization</p>
+            </div>
+          </div>
+          <form method="POST" action="?/togglePowerSchool" use:enhance>
+            <button
+              type="submit"
+              aria-label="Toggle PowerSchool integration"
+              class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors {data.organization.powerSchoolEnabled ? 'bg-teal-600' : 'bg-gray-200'}"
+            >
+              <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform {data.organization.powerSchoolEnabled ? 'translate-x-6' : 'translate-x-1'}"></span>
+            </button>
+          </form>
+        </div>
+        <div class="p-4 rounded-lg {data.organization.powerSchoolEnabled ? 'bg-teal-50 border border-teal-200' : 'bg-gray-50 border border-gray-200'}">
+          {#if data.organization.powerSchoolEnabled}
+            <div class="flex items-center gap-2 text-teal-700">
+              <span class="text-teal-600">✓</span>
+              <span class="font-medium">PowerSchool integration is enabled</span>
+            </div>
+            <p class="text-sm text-teal-600 mt-1">Teachers can connect their PowerSchool accounts and sync grades.</p>
+          {:else}
+            <div class="flex items-center gap-2 text-gray-700">
+              <span class="text-gray-400">✗</span>
+              <span class="font-medium">PowerSchool integration is disabled</span>
+            </div>
+            <p class="text-sm text-gray-500 mt-1">Teachers will not see PowerSchool options in their settings or gradebooks.</p>
+          {/if}
+        </div>
+      </div>
+
       <!-- Plan Status -->
       <div class="card p-6">
         <div class="flex items-center gap-4 mb-4">
@@ -436,9 +475,9 @@
             <div class="text-green-700 font-medium">Unlimited Teachers</div>
             <div class="text-sm text-green-600">No Limits</div>
           </div>
-          <div class="p-4 bg-green-50 rounded-lg">
-            <div class="text-green-700 font-medium">All Integrations</div>
-            <div class="text-sm text-green-600">Enabled</div>
+          <div class="p-4 {data.organization.powerSchoolEnabled ? 'bg-green-50' : 'bg-yellow-50'} rounded-lg">
+            <div class="{data.organization.powerSchoolEnabled ? 'text-green-700' : 'text-yellow-700'} font-medium">PowerSchool</div>
+            <div class="text-sm {data.organization.powerSchoolEnabled ? 'text-green-600' : 'text-yellow-600'}">{data.organization.powerSchoolEnabled ? 'Enabled' : 'Disabled'}</div>
           </div>
         </div>
       </div>

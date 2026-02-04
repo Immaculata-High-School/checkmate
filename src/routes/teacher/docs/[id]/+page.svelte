@@ -20,7 +20,14 @@
     Sparkles,
     Send,
     Loader2,
-    Wand2
+    Wand2,
+    ClipboardList,
+    Copy,
+    Calendar,
+    GraduationCap,
+    CheckCircle,
+    Clock,
+    BarChart3
   } from 'lucide-svelte';
   import RichTextEditor from '$lib/components/RichTextEditor.svelte';
   import type { PageData } from './$types';
@@ -35,12 +42,22 @@
   let title = $state(data.document.title);
   let content = $state(data.document.content || '');
   let showShareModal = $state(data.showShareModal || false);
+  let showAssignModal = $state(data.showAssignModal || false);
   let showDeleteConfirm = $state(false);
   let shareEmail = $state('');
   let shareCanEdit = $state(false);
   let shareError = $state('');
   let sharing = $state(false);
   let selectedClassId = $state('');
+
+  // Assignment state
+  let assignClassId = $state('');
+  let assignType = $state<'VIEW_ONLY' | 'MAKE_COPY'>('MAKE_COPY');
+  let assignInstructions = $state('');
+  let assignDueDate = $state('');
+  let assignPoints = $state('');
+  let assigning = $state(false);
+  let assignError = $state('');
 
   let hasUnsavedChanges = $state(false);
   let saving = $state(false);
@@ -161,6 +178,66 @@
       console.error('Failed to remove class share:', err);
     }
   }
+
+  // Assignment functions
+  async function assignToClass() {
+    if (!assignClassId) {
+      assignError = 'Please select a class';
+      return;
+    }
+
+    assigning = true;
+    assignError = '';
+
+    try {
+      const res = await fetch(`/api/docs/${data.document.id}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          classId: assignClassId,
+          type: assignType,
+          instructions: assignInstructions || null,
+          dueDate: assignDueDate || null,
+          points: assignPoints || null
+        })
+      });
+
+      if (res.ok) {
+        assignClassId = '';
+        assignType = 'MAKE_COPY';
+        assignInstructions = '';
+        assignDueDate = '';
+        assignPoints = '';
+        showAssignModal = false;
+        await invalidateAll();
+      } else {
+        const err = await res.json();
+        assignError = err.message || 'Failed to assign document';
+      }
+    } catch (err) {
+      assignError = 'Failed to assign document';
+    } finally {
+      assigning = false;
+    }
+  }
+
+  async function removeAssignment(assignmentId: string) {
+    try {
+      await fetch(`/api/docs/${data.document.id}/assign`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignmentId })
+      });
+      await invalidateAll();
+    } catch (err) {
+      console.error('Failed to remove assignment:', err);
+    }
+  }
+
+  // Classes not yet assigned
+  const availableClassesForAssignment = $derived(
+    data.classes.filter(c => !data.document.assignments.some(a => a.classId === c.id))
+  );
 
   function handleTitleKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') {
@@ -386,11 +463,34 @@
           title="AI Writing Assistant"
         >
           <Sparkles class="w-4 h-4" />
-          <span class="hidden sm:inline">AI</span>
+          <span class="hidden sm:inline">Assistant</span>
         </button>
       {/if}
 
       {#if isOwner}
+        {#if data.document.assignments.length > 0}
+          <a
+            href="/teacher/docs/{data.document.id}/submissions"
+            class="submissions-button"
+          >
+            <GraduationCap class="w-4 h-4" />
+            <span class="hidden sm:inline">Submissions</span>
+            {#if data.document.assignments.some(a => a.stats.submitted > 0)}
+              <span class="submissions-badge">
+                {data.document.assignments.reduce((sum, a) => sum + a.stats.submitted, 0)}
+              </span>
+            {/if}
+          </a>
+        {/if}
+
+        <button
+          onclick={() => showAssignModal = true}
+          class="assign-button"
+        >
+          <ClipboardList class="w-4 h-4" />
+          Assign
+        </button>
+
         <button
           onclick={() => showShareModal = true}
           class="share-button"
@@ -671,6 +771,60 @@
     color: #5f6368;
   }
 
+  /* Submissions Button - Amber/Orange */
+  .submissions-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 20px;
+    background: #f59e0b;
+    color: white;
+    border-radius: 24px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    text-decoration: none;
+  }
+
+  .submissions-button:hover {
+    background: #d97706;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+
+  .submissions-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  /* Assign Button - Green */
+  .assign-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 20px;
+    background: #10b981;
+    color: white;
+    border-radius: 24px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  }
+
+  .assign-button:hover {
+    background: #059669;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+
   /* Share Button - Google Docs Blue */
   .share-button {
     display: flex;
@@ -730,6 +884,40 @@
 
   .ai-button.active {
     background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  }
+
+  /* Submissions Button - Amber/Orange */
+  .submissions-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: #f59e0b;
+    color: white;
+    border-radius: 24px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    text-decoration: none;
+  }
+
+  .submissions-button:hover {
+    background: #d97706;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+
+  .submissions-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 600;
   }
 
   /* Editor Container - Takes remaining height */
@@ -1118,6 +1306,194 @@
         </button>
         <button onclick={deleteDocument} class="btn bg-red-600 text-white hover:bg-red-700">
           Delete
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Assign to Class Modal -->
+{#if showAssignModal}
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+      <div class="p-6 border-b border-gray-200">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xl font-semibold text-gray-900 flex items-center gap-2">
+            <ClipboardList class="w-5 h-5 text-emerald-500" />
+            Assign to Class
+          </h2>
+          <button onclick={() => showAssignModal = false} class="p-2 hover:bg-gray-100 rounded-lg">
+            <X class="w-5 h-5 text-gray-400" />
+          </button>
+        </div>
+      </div>
+
+      <div class="p-6 space-y-6">
+        {#if assignError}
+          <div class="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2">
+            <AlertCircle class="w-4 h-4 flex-shrink-0" />
+            {assignError}
+          </div>
+        {/if}
+
+        <!-- Assignment Type -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-3">Assignment Type</label>
+          <div class="grid grid-cols-2 gap-3">
+            <button
+              onclick={() => assignType = 'VIEW_ONLY'}
+              class="p-4 border-2 rounded-lg text-left transition-all {assignType === 'VIEW_ONLY' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}"
+            >
+              <div class="flex items-center gap-2 mb-2">
+                <Eye class="w-5 h-5 {assignType === 'VIEW_ONLY' ? 'text-emerald-600' : 'text-gray-400'}" />
+                <span class="font-medium {assignType === 'VIEW_ONLY' ? 'text-emerald-700' : 'text-gray-700'}">View Only</span>
+              </div>
+              <p class="text-xs text-gray-500">Students can read but not edit. Good for reference materials.</p>
+            </button>
+            
+            <button
+              onclick={() => assignType = 'MAKE_COPY'}
+              class="p-4 border-2 rounded-lg text-left transition-all {assignType === 'MAKE_COPY' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}"
+            >
+              <div class="flex items-center gap-2 mb-2">
+                <Copy class="w-5 h-5 {assignType === 'MAKE_COPY' ? 'text-emerald-600' : 'text-gray-400'}" />
+                <span class="font-medium {assignType === 'MAKE_COPY' ? 'text-emerald-700' : 'text-gray-700'}">Make a Copy</span>
+              </div>
+              <p class="text-xs text-gray-500">Each student gets their own editable copy to complete.</p>
+            </button>
+          </div>
+        </div>
+
+        <!-- Select Class -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Select Class</label>
+          {#if availableClassesForAssignment.length > 0}
+            <select bind:value={assignClassId} class="input w-full">
+              <option value="">Choose a class...</option>
+              {#each availableClassesForAssignment as cls}
+                <option value={cls.id}>{cls.emoji} {cls.name} ({cls._count.members} students)</option>
+              {/each}
+            </select>
+          {:else}
+            <p class="text-sm text-gray-500 italic">All your classes already have this document assigned.</p>
+          {/if}
+        </div>
+
+        <!-- Instructions (for MAKE_COPY) -->
+        {#if assignType === 'MAKE_COPY'}
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Instructions (optional)</label>
+            <textarea
+              bind:value={assignInstructions}
+              placeholder="Add instructions for students..."
+              class="input w-full"
+              rows="3"
+            ></textarea>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                <Calendar class="w-4 h-4 inline mr-1" />
+                Due Date (optional)
+              </label>
+              <input type="datetime-local" bind:value={assignDueDate} class="input w-full" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">
+                <GraduationCap class="w-4 h-4 inline mr-1" />
+                Points (optional)
+              </label>
+              <input type="number" bind:value={assignPoints} placeholder="100" class="input w-full" />
+            </div>
+          </div>
+        {/if}
+
+        <!-- Current Assignments -->
+        {#if data.document.assignments.length > 0}
+          <div>
+            <h3 class="font-medium text-gray-900 mb-3 flex items-center gap-2">
+              <BarChart3 class="w-4 h-4" />
+              Current Assignments
+            </h3>
+            <div class="space-y-2">
+              {#each data.document.assignments as assignment}
+                <div class="p-3 bg-gray-50 rounded-lg">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                      <div class="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center text-lg">
+                        {assignment.class.emoji || '📚'}
+                      </div>
+                      <div>
+                        <div class="font-medium text-gray-900 text-sm">{assignment.class.name}</div>
+                        <div class="text-xs text-gray-500">
+                          {assignment.type === 'VIEW_ONLY' ? 'View only' : 'Individual copies'}
+                          {#if assignment.dueDate}
+                            · Due {new Date(assignment.dueDate).toLocaleDateString()}
+                          {/if}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onclick={() => removeAssignment(assignment.id)}
+                      class="p-1 hover:bg-gray-200 rounded"
+                      title="Remove assignment"
+                    >
+                      <X class="w-4 h-4 text-gray-400" />
+                    </button>
+                  </div>
+                  
+                  {#if assignment.type === 'MAKE_COPY'}
+                    <div class="mt-3 pt-3 border-t border-gray-200">
+                      <div class="grid grid-cols-4 gap-2 text-center text-xs">
+                        <div class="p-2 bg-gray-100 rounded">
+                          <div class="font-semibold text-gray-700">{assignment.stats.notStarted}</div>
+                          <div class="text-gray-500">Not Started</div>
+                        </div>
+                        <div class="p-2 bg-yellow-50 rounded">
+                          <div class="font-semibold text-yellow-700">{assignment.stats.inProgress}</div>
+                          <div class="text-gray-500">In Progress</div>
+                        </div>
+                        <div class="p-2 bg-blue-50 rounded">
+                          <div class="font-semibold text-blue-700">{assignment.stats.submitted}</div>
+                          <div class="text-gray-500">Submitted</div>
+                        </div>
+                        <div class="p-2 bg-emerald-50 rounded">
+                          <div class="font-semibold text-emerald-700">{assignment.stats.graded}</div>
+                          <div class="text-gray-500">Graded</div>
+                        </div>
+                      </div>
+                      <a
+                        href="/teacher/docs/{data.document.id}/submissions?classId={assignment.classId}"
+                        class="mt-3 block text-center text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+                      >
+                        View all submissions →
+                      </a>
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <div class="p-6 border-t border-gray-200 bg-gray-50 flex gap-3">
+        <button onclick={() => showAssignModal = false} class="btn btn-secondary flex-1">
+          Cancel
+        </button>
+        <button
+          onclick={assignToClass}
+          disabled={assigning || !assignClassId}
+          class="btn bg-emerald-600 text-white hover:bg-emerald-700 flex-1 flex items-center justify-center gap-2"
+        >
+          {#if assigning}
+            <Loader2 class="w-4 h-4 animate-spin" />
+            Assigning...
+          {:else}
+            <ClipboardList class="w-4 h-4" />
+            Assign
+          {/if}
         </button>
       </div>
     </div>
