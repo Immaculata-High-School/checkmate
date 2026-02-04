@@ -1,5 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { lucia } from '$lib/server/auth';
+import { lucia, invalidateUserOrgCache } from '$lib/server/auth';
 import { prisma } from '$lib/server/db';
 import bcrypt from 'bcryptjs';
 import type { Actions, PageServerLoad } from './$types';
@@ -32,7 +32,28 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       }
     });
 
+    // If already a member, check if they need a role upgrade
     if (existingMembership) {
+      const higherRoles = ['ORG_OWNER', 'ORG_ADMIN', 'DEPARTMENT_HEAD', 'TEACHER', 'TEACHING_ASSISTANT'];
+      const inviteRoleIndex = higherRoles.indexOf(invite.role);
+      const currentRoleIndex = higherRoles.indexOf(existingMembership.role);
+      
+      // If invite role is higher (lower index means higher role), show upgrade option
+      if (inviteRoleIndex !== -1 && (currentRoleIndex === -1 || inviteRoleIndex < currentRoleIndex)) {
+        return {
+          invite: {
+            email: invite.email,
+            role: invite.role,
+            organizationName: invite.organization.name
+          },
+          isLoggedIn: true,
+          userEmail: locals.user.email,
+          existingRole: existingMembership.role,
+          isRoleUpgrade: true
+        };
+      }
+      
+      // Already a member with same or higher role
       throw redirect(302, '/dashboard');
     }
 
@@ -74,14 +95,35 @@ export const actions: Actions = {
       return fail(400, { error: 'You must be logged in to accept this invitation.' });
     }
 
-    // Add user to organization
-    await prisma.organizationMember.create({
-      data: {
-        userId: locals.user.id,
-        organizationId: invite.organizationId,
-        role: invite.role
+    // Check if already a member (for role upgrade case)
+    const existingMembership = await prisma.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId: invite.organizationId,
+          userId: locals.user.id
+        }
       }
     });
+
+    if (existingMembership) {
+      // Update existing membership with new role
+      await prisma.organizationMember.update({
+        where: { id: existingMembership.id },
+        data: { role: invite.role }
+      });
+    } else {
+      // Add user to organization
+      await prisma.organizationMember.create({
+        data: {
+          userId: locals.user.id,
+          organizationId: invite.organizationId,
+          role: invite.role
+        }
+      });
+    };
+
+    // Invalidate org membership cache so role takes effect immediately
+    invalidateUserOrgCache(locals.user.id);
 
     // Delete the invite
     await prisma.organizationInvite.delete({

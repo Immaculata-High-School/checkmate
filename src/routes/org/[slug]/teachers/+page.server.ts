@@ -1,5 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { invalidateUserOrgCache } from '$lib/server/auth';
 import { sendOrganizationInvite, sendPasswordReset } from '$lib/server/email';
 import { generateCode } from '$lib/utils';
 import bcrypt from 'bcryptjs';
@@ -317,6 +318,9 @@ export const actions: Actions = {
     await prisma.organizationMember.delete({
       where: { id: memberId }
     });
+
+    // Invalidate cache so role change takes effect immediately
+    invalidateUserOrgCache(member.userId);
 
     return { success: true };
   },

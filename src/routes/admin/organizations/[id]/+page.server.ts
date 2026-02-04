@@ -1,5 +1,6 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { invalidateUserOrgCache } from '$lib/server/auth';
 import bcrypt from 'bcryptjs';
 import { generateCode } from '$lib/utils';
 import { sendOrganizationInvite } from '$lib/server/email';
@@ -149,9 +150,13 @@ export const actions: Actions = {
       return fail(400, { error: 'Member ID required' });
     }
 
-    await prisma.organizationMember.delete({
-      where: { id: memberId }
+    const member = await prisma.organizationMember.delete({
+      where: { id: memberId },
+      select: { userId: true }
     });
+
+    // Invalidate cache so role change takes effect immediately
+    invalidateUserOrgCache(member.userId);
 
     return { success: true };
   },
@@ -165,10 +170,14 @@ export const actions: Actions = {
       return fail(400, { error: 'Member ID and role required' });
     }
 
-    await prisma.organizationMember.update({
+    const member = await prisma.organizationMember.update({
       where: { id: memberId },
-      data: { role }
+      data: { role },
+      select: { userId: true }
     });
+
+    // Invalidate cache so role change takes effect immediately
+    invalidateUserOrgCache(member.userId);
 
     return { success: true };
   },

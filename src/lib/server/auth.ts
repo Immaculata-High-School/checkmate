@@ -92,7 +92,7 @@ export function getEffectiveRole(platformRole: PlatformRole, orgMemberships: Org
   if (platformRole === 'PLATFORM_ADMIN') return 'admin';
   if (platformRole === 'SUPPORT') return 'support';
 
-  const teacherRoles: OrgRole[] = ['ORG_OWNER', 'ORG_ADMIN', 'DEPARTMENT_HEAD', 'TEACHER'];
+  const teacherRoles: OrgRole[] = ['ORG_OWNER', 'ORG_ADMIN', 'DEPARTMENT_HEAD', 'TEACHER', 'TEACHING_ASSISTANT'];
   if (orgMemberships.some((m) => teacherRoles.includes(m.role))) {
     return 'teacher';
   }

@@ -3,8 +3,12 @@ import { startQueueProcessor } from '$lib/server/rateLimiter';
 import { cache } from '$lib/server/cache';
 import type { Handle } from '@sveltejs/kit';
 
-// Start the grading queue processor when the server starts
-startQueueProcessor();
+// Start the grading queue processor when the server starts (with error handling)
+try {
+  startQueueProcessor();
+} catch (error) {
+  console.error('[Startup] Failed to start queue processor:', error);
+}
 
 export const handle: Handle = async ({ event, resolve }) => {
   const sessionId = event.cookies.get(lucia.sessionCookieName);

@@ -82,8 +82,9 @@ USER sveltekit
 # Expose port
 EXPOSE 3000
 
-# Health check - use 127.0.0.1 instead of localhost to force IPv4
-HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
+# Health check - more lenient to prevent excessive restarts
+# Increased start-period for slower DB connections, reduced retries
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/health || exit 1
 
 # Start the application

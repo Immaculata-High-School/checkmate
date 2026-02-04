@@ -4,18 +4,26 @@ import { prisma } from '$lib/server/db';
 import bcrypt from 'bcryptjs';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
   if (locals.user) {
+    const redirectTo = url.searchParams.get('redirect');
+    // Only allow redirects to local paths starting with /
+    if (redirectTo && redirectTo.startsWith('/')) {
+      throw redirect(302, redirectTo);
+    }
     throw redirect(302, '/dashboard');
   }
-  return {};
+  return {
+    redirect: url.searchParams.get('redirect') || null
+  };
 };
 
 export const actions: Actions = {
-  default: async ({ request, cookies }) => {
+  default: async ({ request, cookies, url }) => {
     const formData = await request.formData();
     const email = formData.get('email')?.toString().toLowerCase().trim();
     const password = formData.get('password')?.toString();
+    const redirectTo = url.searchParams.get('redirect');
 
     if (!email || !password) {
       return fail(400, { error: 'Email and password are required', email });
@@ -53,6 +61,10 @@ export const actions: Actions = {
       ...sessionCookie.attributes
     });
 
+    // Redirect to specified path or dashboard
+    if (redirectTo && redirectTo.startsWith('/')) {
+      throw redirect(302, redirectTo);
+    }
     throw redirect(302, '/dashboard');
   }
 };

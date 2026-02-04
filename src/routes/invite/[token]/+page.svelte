@@ -1,5 +1,6 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { page } from '$app/stores';
   import { AlertCircle, CheckCircle } from 'lucide-svelte';
   import ChessKing from '$lib/components/ChessKing.svelte';
   import type { ActionData, PageData } from './$types';
@@ -53,9 +54,21 @@
           <p class="text-sm text-gray-600 mb-4 text-center">
             Signed in as <strong>{data.userEmail}</strong>
           </p>
+          {#if data.isRoleUpgrade}
+            <div class="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p class="text-sm text-yellow-800">
+                You're currently a <strong class="capitalize">{data.existingRole?.toLowerCase().replace('_', ' ')}</strong> in this organization.
+                Accepting this invitation will upgrade your role to <strong class="capitalize">{data.invite.role.toLowerCase().replace('_', ' ')}</strong>.
+              </p>
+            </div>
+          {/if}
           <form method="POST" action="?/accept" use:enhance>
             <button type="submit" class="btn btn-primary w-full">
-              Accept Invitation
+              {#if data.isRoleUpgrade}
+                Upgrade Role
+              {:else}
+                Accept Invitation
+              {/if}
             </button>
           </form>
         {:else}
@@ -115,7 +128,7 @@
 
           <p class="text-center text-sm text-gray-600 mt-4">
             Already have an account?
-            <a href="/login" class="text-blue-600 hover:underline">Sign in</a>
+            <a href="/login?redirect=/invite/{$page.params.token}" class="text-blue-600 hover:underline">Sign in</a>
           </p>
         {/if}
       {/if}
