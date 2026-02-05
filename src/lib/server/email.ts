@@ -13,8 +13,8 @@ const transporter = nodemailer.createTransport({
 });
 
 const fromAddress = `"${env.SMTP_FROM_NAME || 'Checkmate'}" <${env.SMTP_FROM_ADDRESS || 'noreply@checkmate.com'}>`;
-const appUrl = env.PUBLIC_APP_URL || 'http://localhost:5173';
-const appName = env.PUBLIC_APP_NAME || 'Checkmate';
+const appUrl = env.APP_URL || 'http://localhost:5173';
+const appName = env.APP_NAME || 'Checkmate';
 
 interface EmailOptions {
   to: string;
