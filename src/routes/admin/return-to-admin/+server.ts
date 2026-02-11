@@ -1,8 +1,8 @@
 import { redirect } from '@sveltejs/kit';
 import { lucia } from '$lib/server/auth';
-import type { PageServerLoad } from './$types';
+import type { RequestHandler } from './$types';
 
-export const load: PageServerLoad = async ({ cookies }) => {
+export const GET: RequestHandler = async ({ cookies }) => {
   const originalSessionId = cookies.get('admin_original_session');
 
   if (!originalSessionId) {
@@ -13,7 +13,6 @@ export const load: PageServerLoad = async ({ cookies }) => {
   const { session } = await lucia.validateSession(originalSessionId);
 
   if (!session) {
-    // Original session expired, clear the cookie and redirect to login
     cookies.delete('admin_original_session', { path: '/' });
     throw redirect(302, '/login');
   }

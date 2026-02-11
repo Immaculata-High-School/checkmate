@@ -24,6 +24,21 @@ let lastProcessingTrigger = 0;
 const PROCESSING_TIMEOUT_MS = 5 * 60 * 1000; // 5 minute timeout for stuck processing
 const PROCESSING_DEBOUNCE_MS = 5000; // Don't re-trigger processing within 5 seconds
 
+// In-memory store for extra regrade instructions keyed by testId
+const regradeInstructionsMap = new Map<string, string>();
+
+export function setRegradeInstructions(testId: string, instructions: string): void {
+  regradeInstructionsMap.set(testId, instructions);
+}
+
+export function getRegradeInstructions(testId: string): string | undefined {
+  return regradeInstructionsMap.get(testId);
+}
+
+export function clearRegradeInstructions(testId: string): void {
+  regradeInstructionsMap.delete(testId);
+}
+
 /**
  * Check if we can make an AI request right now
  */
@@ -227,6 +242,7 @@ export async function queueGrading(params: {
   });
 
   // Trigger queue processing (non-blocking, debounced)
+  notifyQueueHasItems();
   const now = Date.now();
   if (now - lastProcessingTrigger > PROCESSING_DEBOUNCE_MS) {
     lastProcessingTrigger = now;
@@ -420,12 +436,14 @@ export async function processQueue(): Promise<void> {
         recordRequest();
 
         // Grade the submission
+        const extraInstructions = getRegradeInstructions(submission.testId);
         const result = await shuttleAI.gradeTestComprehensive(
           {
             testTitle: submission.test.title,
             answers: answersToGrade,
             allowPartialCredit: submission.test.aiPartialCredit,
-            gradingHarshness: submission.test.aiGradingHarshness
+            gradingHarshness: submission.test.aiGradingHarshness,
+            extraInstructions
           },
           {
             userId: submission.studentId,
@@ -472,6 +490,16 @@ export async function processQueue(): Promise<void> {
           }
         });
 
+        // Clean up regrade instructions if no more queued items for this test
+        if (regradeInstructionsMap.has(nextItem.testId)) {
+          const remainingForTest = await prisma.gradingQueue.count({
+            where: { testId: nextItem.testId, status: { in: ['QUEUED', 'PROCESSING'] } }
+          });
+          if (remainingForTest === 0) {
+            clearRegradeInstructions(nextItem.testId);
+          }
+        }
+
         // Create notification for student
         await prisma.notification.create({
           data: {
@@ -485,9 +513,13 @@ export async function processQueue(): Promise<void> {
       } catch (error) {
         console.error(`Failed to grade submission ${nextItem.submissionId}:`, error);
 
-        // Check if we should retry
-        if (nextItem.attempts < 3) {
-          // Requeue for retry
+        // Check if we should retry (up to 10 attempts for reliability)
+        if (nextItem.attempts < 10) {
+          // Requeue for retry with a small delay based on attempt count
+          const backoffMs = Math.min(nextItem.attempts * 2000, 15000);
+          if (backoffMs > 0) {
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
+          }
           await prisma.gradingQueue.update({
             where: { id: nextItem.id },
             data: {
@@ -642,19 +674,94 @@ export async function cleanupQueue(): Promise<number> {
   return result.count;
 }
 
+/**
+ * Get grading queue items for a specific test (for teacher UI)
+ */
+export async function getTestGradingQueue(testId: string): Promise<Array<{
+  submissionId: string;
+  status: string;
+  position: number;
+  attempts: number;
+  error: string | null;
+  createdAt: Date;
+}>> {
+  return prisma.gradingQueue.findMany({
+    where: {
+      testId,
+      status: { in: ['QUEUED', 'PROCESSING'] }
+    },
+    select: {
+      submissionId: true,
+      status: true,
+      position: true,
+      attempts: true,
+      error: true,
+      createdAt: true
+    },
+    orderBy: { createdAt: 'asc' }
+  });
+}
+
+/**
+ * Get grading queue items for a list of submission IDs (for teacher UI)
+ */
+export async function getSubmissionsGradingQueue(submissionIds: string[]): Promise<Array<{
+  submissionId: string;
+  status: string;
+  position: number;
+  attempts: number;
+  error: string | null;
+  createdAt: Date;
+}>> {
+  if (submissionIds.length === 0) return [];
+  return prisma.gradingQueue.findMany({
+    where: {
+      submissionId: { in: submissionIds },
+      status: { in: ['QUEUED', 'PROCESSING'] }
+    },
+    select: {
+      submissionId: true,
+      status: true,
+      position: true,
+      attempts: true,
+      error: true,
+      createdAt: true
+    },
+    orderBy: { createdAt: 'asc' }
+  });
+}
+
 // Start queue processor on module load (for long-running processes)
 // This will check the queue periodically
 let queueProcessorInterval: NodeJS.Timeout | null = null;
+
+// Track whether there are known queued items to avoid unnecessary DB polling
+let hasKnownQueuedItems = false;
+
+export function notifyQueueHasItems(): void {
+  hasKnownQueuedItems = true;
+}
 
 export function startQueueProcessor(): void {
   if (queueProcessorInterval) return;
 
   queueProcessorInterval = setInterval(() => {
-    processQueue().catch((err) => console.error('Queue processor error:', err));
-  }, 5000); // Check every 5 seconds
+    // Only poll the DB if we know there are items, otherwise skip
+    if (hasKnownQueuedItems) {
+      processQueue()
+        .then(() => {
+          // After processing, assume queue is drained until notified again
+          hasKnownQueuedItems = false;
+        })
+        .catch((err) => console.error('Queue processor error:', err));
+    }
+  }, 5000); // Check every 5 seconds (but only hits DB when items are known)
 
-  // Also process immediately on start
-  processQueue().catch((err) => console.error('Initial queue processing error:', err));
+  // Check once on start in case items were left from a previous run
+  hasKnownQueuedItems = true;
+  processQueue()
+    .then(() => { hasKnownQueuedItems = false; })
+    .catch((err) => console.error('Initial queue processing error:', err));
 }
 
 export function stopQueueProcessor(): void {
