@@ -244,6 +244,15 @@ body {
   transition: background-color 0.15s, color 0.15s;
 }
 
+.nav-link svg {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  flex-shrink: 0;
+}
+
+.nav-link:hover svg {
+  transform: scale(1.18) rotate(-6deg);
+}
+
 .nav-link:hover {
   background-color: #f3f4f6;
   color: #111827;
@@ -253,6 +262,16 @@ body {
   background-color: #eff6ff;
   color: #1d4ed8;
   font-weight: 500;
+}
+
+/* Sidebar nav icon animations for dark-themed sidebars (admin, org) */
+.sidebar-nav-item svg {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  flex-shrink: 0;
+}
+
+.sidebar-nav-item:hover svg {
+  transform: scale(1.18) rotate(-6deg);
 }
 
 /* Avatar */

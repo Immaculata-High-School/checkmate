@@ -95,7 +95,7 @@
         {#each navItems as item}
           <a
             href={item.href}
-            class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors {item.warn
+            class="sidebar-nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors {item.warn
               ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30 ring-1 ring-red-400/50'
               : isActive(item.href, item.exact)
                 ? 'bg-indigo-800 text-white'
@@ -115,7 +115,7 @@
 
       <!-- User section -->
       <div class="p-3 border-t border-indigo-800">
-        <a href="/" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-indigo-300 hover:text-white hover:bg-indigo-800">
+        <a href="/" class="sidebar-nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-indigo-300 hover:text-white hover:bg-indigo-800">
           <LogOut class="w-5 h-5" />
           Back to Home
         </a>

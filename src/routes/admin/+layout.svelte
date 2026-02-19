@@ -87,7 +87,7 @@
         {#each navItems as item}
           <a
             href={item.href}
-            class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors {isActive(item.href)
+            class="sidebar-nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors {isActive(item.href)
               ? 'bg-gray-800 text-white'
               : 'text-gray-400 hover:text-white hover:bg-gray-800'}"
             onclick={() => (sidebarOpen = false)}
@@ -100,7 +100,7 @@
 
       <!-- User section -->
       <div class="p-3 border-t border-gray-800">
-        <a href="/" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800">
+        <a href="/" class="sidebar-nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800">
           <LogOut class="w-5 h-5" />
           Back to App
         </a>
