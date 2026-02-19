@@ -6,7 +6,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const userId = locals.user!.id;
 
   // Run all queries in parallel for better performance
-  const [classMemberships, recentSubmissions, stats] = await Promise.all([
+  const [classMemberships, recentSubmissions, recentDocSubmissions, stats] = await Promise.all([
     // Get student's classes
     prisma.classMember.findMany({
       where: { userId },
@@ -32,6 +32,26 @@ export const load: PageServerLoad = async ({ locals }) => {
         startedAt: true,
         submittedAt: true,
         test: { select: { title: true, accessCode: true } }
+      }
+    }),
+
+    // Get recent graded document submissions
+    prisma.studentDocument.findMany({
+      where: { studentId: userId, grade: { not: null } },
+      take: 5,
+      orderBy: { submittedAt: 'desc' },
+      select: {
+        id: true,
+        status: true,
+        grade: true,
+        submittedAt: true,
+        assignment: {
+          select: {
+            title: true,
+            points: true,
+            document: { select: { title: true } }
+          }
+        }
       }
     }),
 
@@ -94,6 +114,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       studySets: ownStudySetsCount + assignedStudySetsCount
     },
     recentSubmissions,
+    recentDocSubmissions,
     upcomingAssignments
   };
 };

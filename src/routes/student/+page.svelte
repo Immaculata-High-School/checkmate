@@ -64,7 +64,7 @@
       </div>
       <div>
         <div class="text-2xl font-bold text-gray-900">{data.stats.totalTests}</div>
-        <div class="text-sm text-gray-500">Completed</div>
+        <div class="text-sm text-gray-500">Tests Graded</div>
       </div>
     </div>
 
@@ -143,7 +143,7 @@
       {/if}
     </div>
 
-    <!-- Recent Test Results -->
+    <!-- Recent Results -->
     <div class="card p-6">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-gray-900">Recent Results</h3>
@@ -152,11 +152,11 @@
         </a>
       </div>
 
-      {#if data.recentSubmissions.length === 0}
+      {#if data.recentSubmissions.length === 0 && data.recentDocSubmissions.length === 0}
         <div class="text-center py-8">
           <FileText class="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p class="text-gray-500">No test results yet</p>
-          <p class="text-sm text-gray-400">Complete a test to see your results here.</p>
+          <p class="text-gray-500">No results yet</p>
+          <p class="text-sm text-gray-400">Complete an assignment to see your results here.</p>
         </div>
       {:else}
         <div class="space-y-3">
@@ -192,6 +192,28 @@
                     In Progress
                   </span>
                 {/if}
+              </div>
+            </div>
+          {/each}
+          {#each data.recentDocSubmissions as doc}
+            {@const percentage = doc.assignment.points ? Math.round(Math.min(100, (doc.grade || 0) / doc.assignment.points * 100)) : 0}
+            <div class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors">
+              <div>
+                <div class="font-medium text-gray-900">{doc.assignment.title || doc.assignment.document.title}</div>
+                <div class="text-sm text-gray-500">
+                  {doc.submittedAt ? formatRelativeTime(doc.submittedAt) : ''}
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <div
+                  class="px-3 py-1 rounded-full text-sm font-bold {getGradeColor(percentage)} {percentage >= 70
+                    ? 'bg-green-100'
+                    : percentage >= 50
+                      ? 'bg-yellow-100'
+                      : 'bg-red-100'}"
+                >
+                  {getGradeLetter(percentage)} ({percentage}%)
+                </div>
               </div>
             </div>
           {/each}

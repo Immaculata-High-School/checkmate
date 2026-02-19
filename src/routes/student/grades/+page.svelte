@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Trophy, TrendingUp, Target, Award } from 'lucide-svelte';
+  import { Trophy, TrendingUp, Target, Award, FileText, GraduationCap } from 'lucide-svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -17,6 +17,31 @@
     if (percentage >= 70) return 'badge-yellow';
     return 'badge-red';
   }
+
+  // Combine and sort all grades by date
+  const allGrades = $derived([
+    ...data.submissions.map(s => ({
+      type: 'test' as const,
+      title: s.test.title,
+      score: (s.score || 0) + (s.bonusPoints || 0),
+      totalPoints: s.totalPoints || 0,
+      bonusPoints: s.bonusPoints || 0,
+      date: s.submittedAt
+    })),
+    ...data.docSubmissions.map(s => ({
+      type: 'document' as const,
+      title: s.assignment.title || s.assignment.document.title,
+      score: s.grade || 0,
+      totalPoints: s.assignment.points || 0,
+      bonusPoints: 0,
+      date: s.submittedAt
+    }))
+  ].sort((a, b) => {
+    if (!a.date && !b.date) return 0;
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    return new Date(b.date).getTime() - new Date(a.date).getTime();
+  }));
 </script>
 
 <div class="max-w-4xl mx-auto">
@@ -27,7 +52,7 @@
       </div>
       <div>
         <h1 class="text-2xl font-bold text-gray-900">My Grades</h1>
-        <p class="text-gray-600">View your test scores and progress</p>
+        <p class="text-gray-600">View your scores and progress</p>
       </div>
     </div>
   </div>
@@ -40,8 +65,8 @@
           <Target class="w-5 h-5 text-blue-600" />
         </div>
         <div>
-          <div class="stat-value">{data.stats.totalTests}</div>
-          <div class="stat-label">Tests Taken</div>
+          <div class="stat-value">{data.stats.totalTests + data.stats.totalDocs}</div>
+          <div class="stat-label">Graded</div>
         </div>
       </div>
     </div>
@@ -88,28 +113,37 @@
   <!-- Grades List -->
   <div class="card">
     <div class="px-4 py-3 border-b border-gray-200">
-      <h2 class="font-semibold text-gray-900">Test Scores</h2>
+      <h2 class="font-semibold text-gray-900">All Scores</h2>
     </div>
 
-    {#if data.submissions.length === 0}
+    {#if allGrades.length === 0}
       <div class="p-8 text-center">
         <Trophy class="w-12 h-12 text-gray-300 mx-auto mb-3" />
-        <p class="text-gray-500">No graded tests yet</p>
+        <p class="text-gray-500">No graded assignments yet</p>
       </div>
     {:else}
       <div class="divide-y divide-gray-100">
-        {#each data.submissions as submission}
-          {@const totalScore = (submission.score || 0) + (submission.bonusPoints || 0)}
-          {@const percentage = Math.round(Math.min(100, totalScore / (submission.totalPoints || 1) * 100))}
+        {#each allGrades as grade}
+          {@const percentage = grade.totalPoints > 0 ? Math.round(Math.min(100, grade.score / grade.totalPoints * 100)) : 0}
           <div class="p-4 flex items-center justify-between">
-            <div>
-              <h3 class="font-medium text-gray-900">{submission.test.title}</h3>
-              <p class="text-sm text-gray-500">
-                {submission.submittedAt ? new Date(submission.submittedAt).toLocaleDateString() : 'Unknown date'}
-              </p>
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg flex items-center justify-center {grade.type === 'test' ? 'bg-blue-100' : 'bg-emerald-100'}">
+                {#if grade.type === 'test'}
+                  <FileText class="w-4 h-4 text-blue-600" />
+                {:else}
+                  <GraduationCap class="w-4 h-4 text-emerald-600" />
+                {/if}
+              </div>
+              <div>
+                <h3 class="font-medium text-gray-900">{grade.title}</h3>
+                <p class="text-sm text-gray-500">
+                  {grade.date ? new Date(grade.date).toLocaleDateString() : 'Unknown date'}
+                  <span class="text-xs ml-1 text-gray-400">• {grade.type === 'test' ? 'Test' : 'Document'}</span>
+                </p>
+              </div>
             </div>
             <div class="flex items-center gap-3">
-              <span class="text-gray-600">{totalScore}/{submission.totalPoints}{submission.bonusPoints ? ` (+${submission.bonusPoints})` : ''}</span>
+              <span class="text-gray-600">{grade.score}/{grade.totalPoints}{grade.bonusPoints ? ` (+${grade.bonusPoints})` : ''}</span>
               <span class="badge {getGradeBadge(percentage)}">{percentage}%</span>
             </div>
           </div>
