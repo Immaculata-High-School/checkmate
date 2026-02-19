@@ -11,21 +11,56 @@
     ChevronDown,
     Search,
     Sparkles,
-    Loader2
+    Loader2,
+    GraduationCap,
+    Eye,
+    MessageSquare
   } from 'lucide-svelte';
   import type { PageData, ActionData } from './$types';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
   let aiGrading = $state(false);
 
+  // Track grading queue status
+  let gradingQueue = $derived(data.gradingQueue || []);
+  let gradingInProgress = $derived(gradingQueue.length > 0);
+  let gradingSubmissionIds = $derived(new Set(gradingQueue.map((q: any) => q.submissionId)));
+
+  // Poll for updates when grading is in progress
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+  $effect(() => {
+    if (gradingInProgress) {
+      if (!pollInterval) {
+        pollInterval = setInterval(() => {
+          invalidateAll();
+        }, 3000);
+      }
+    } else {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    }
+
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    };
+  });
+
   let showGradeModal = $state<any>(null);
   let statusFilter = $state(data.filters.status);
   let testFilter = $state(data.filters.testId);
+  let typeFilter = $state(data.filters.type);
 
   function applyFilters() {
     const params = new URLSearchParams();
     if (statusFilter) params.set('status', statusFilter);
     if (testFilter) params.set('test', testFilter);
+    if (typeFilter) params.set('type', typeFilter);
     goto(`?${params.toString()}`);
   }
 
@@ -35,6 +70,8 @@
       case 'SUBMITTED': return { class: 'badge-yellow', text: 'Needs Grading' };
       case 'PENDING': return { class: 'badge-orange', text: 'Pending Review' };
       case 'IN_PROGRESS': return { class: 'badge-gray', text: 'In Progress' };
+      case 'RETURNED': return { class: 'badge-blue', text: 'Returned' };
+      case 'RESUBMITTED': return { class: 'badge-purple', text: 'Resubmitted' };
       default: return { class: 'badge-gray', text: status };
     }
   }
@@ -54,6 +91,21 @@
     const totalScore = (submission.score || 0) + (submission.bonusPoints || 0);
     const percentage = Math.round(Math.min(100, (totalScore / submission.totalPoints) * 100));
     return `${totalScore}/${submission.totalPoints} (${percentage}%)${submission.bonusPoints ? ` +${submission.bonusPoints}` : ''}`;
+  }
+
+  function formatDocScore(doc: any) {
+    if (doc.grade === null) return '-';
+    const pts = doc.assignment?.points;
+    if (pts) {
+      const pct = Math.round(Math.min(100, (doc.grade / pts) * 100));
+      return `${doc.grade}/${pts} (${pct}%)`;
+    }
+    return `${doc.grade}`;
+  }
+
+  function getDocStatus(doc: any) {
+    if (doc.grade !== null) return 'GRADED';
+    return doc.status || 'NOT_STARTED';
   }
 </script>
 
@@ -77,6 +129,27 @@
     </div>
   {/if}
 
+  {#if (form as any)?.aiQueued}
+    <div class="alert alert-success mb-6">
+      <CheckCircle class="w-5 h-5" />
+      {form?.message || 'Submission queued for AI grading.'}
+    </div>
+  {/if}
+
+  {#if gradingInProgress}
+    <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6">
+      <div class="flex items-center gap-3">
+        <Loader2 class="w-5 h-5 text-indigo-600 animate-spin flex-shrink-0" />
+        <div>
+          <p class="font-medium text-indigo-900">AI Grading in Progress</p>
+          <p class="text-sm text-indigo-600">
+            {gradingQueue.length} submission{gradingQueue.length !== 1 ? 's' : ''} being graded. This page will update automatically.
+          </p>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   {#if form?.error}
     <div class="alert alert-error mb-6">
       <AlertCircle class="w-5 h-5" />
@@ -87,6 +160,11 @@
   <!-- Filters -->
   <div class="card p-4 mb-6">
     <div class="flex flex-col sm:flex-row gap-4">
+      <select bind:value={typeFilter} onchange={applyFilters} class="input flex-1">
+        <option value="">All Types</option>
+        <option value="test">Tests</option>
+        <option value="document">Documents</option>
+      </select>
       <select bind:value={statusFilter} onchange={applyFilters} class="input flex-1">
         <option value="">All Status</option>
         <option value="SUBMITTED">Needs Grading</option>
@@ -94,12 +172,14 @@
         <option value="GRADED">Graded</option>
         <option value="IN_PROGRESS">In Progress</option>
       </select>
-      <select bind:value={testFilter} onchange={applyFilters} class="input flex-1">
-        <option value="">All Tests</option>
-        {#each data.tests as test}
-          <option value={test.id}>{test.title}</option>
-        {/each}
-      </select>
+      {#if typeFilter !== 'document'}
+        <select bind:value={testFilter} onchange={applyFilters} class="input flex-1">
+          <option value="">All Tests</option>
+          {#each data.tests as test}
+            <option value={test.id}>{test.title}</option>
+          {/each}
+        </select>
+      {/if}
     </div>
   </div>
 
@@ -109,7 +189,7 @@
       <thead class="bg-gray-50 border-b border-gray-200">
         <tr>
           <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Student</th>
-          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Test</th>
+          <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Assignment</th>
           <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase hidden md:table-cell">Submitted</th>
           <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Score</th>
           <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Status</th>
@@ -133,6 +213,7 @@
               <a href="/teacher/tests/{submission.test.id}" class="font-medium text-blue-600 hover:underline">
                 {submission.test.title}
               </a>
+              <div class="text-xs text-gray-400">Test</div>
             </td>
             <td class="px-4 py-4 text-sm text-gray-500 hidden md:table-cell">
               {formatDate(submission.submittedAt)}
@@ -141,11 +222,23 @@
               {formatScore(submission)}
             </td>
             <td class="px-4 py-4 text-center">
-              <span class="badge {status.class}">{status.text}</span>
+              {#if gradingSubmissionIds.has(submission.id)}
+                <span class="badge bg-indigo-100 text-indigo-700 border-indigo-200 flex items-center gap-1 justify-center">
+                  <Loader2 class="w-3 h-3 animate-spin" />
+                  Grading
+                </span>
+              {:else}
+                <span class="badge {status.class}">{status.text}</span>
+              {/if}
             </td>
             <td class="px-4 py-4 text-right">
               <div class="flex items-center justify-end gap-2">
-                {#if submission.status === 'SUBMITTED' || submission.status === 'PENDING'}
+                {#if gradingSubmissionIds.has(submission.id)}
+                  <span class="text-sm text-indigo-500 flex items-center gap-1">
+                    <Loader2 class="w-4 h-4 animate-spin" />
+                    Grading...
+                  </span>
+                {:else if submission.status === 'SUBMITTED' || submission.status === 'PENDING'}
                   <form method="POST" action="?/aiGrade" use:enhance={() => {
                     aiGrading = true;
                     return async ({ update }) => {
@@ -181,13 +274,58 @@
               </div>
             </td>
           </tr>
-        {:else}
+        {/each}
+
+        <!-- Document submissions -->
+        {#each data.docSubmissions as doc}
+          {@const docStatus = getDocStatus(doc)}
+          {@const status = getStatusBadge(docStatus)}
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-4">
+              <div class="flex items-center gap-3">
+                <div class="avatar avatar-sm">{doc.student.name?.charAt(0) || '?'}</div>
+                <div>
+                  <div class="font-medium text-gray-900">{doc.student.name}</div>
+                  <div class="text-sm text-gray-500">{doc.student.email}</div>
+                </div>
+              </div>
+            </td>
+            <td class="px-4 py-4">
+              <a href="/teacher/docs/{doc.assignment.document.id}/submissions" class="font-medium text-teal-600 hover:underline">
+                {doc.assignment.title || doc.assignment.document.title}
+              </a>
+              <div class="text-xs text-gray-400">Document</div>
+            </td>
+            <td class="px-4 py-4 text-sm text-gray-500 hidden md:table-cell">
+              {formatDate(doc.submittedAt)}
+            </td>
+            <td class="px-4 py-4 text-center font-medium">
+              {formatDocScore(doc)}
+            </td>
+            <td class="px-4 py-4 text-center">
+              <span class="badge {status.class}">{status.text}</span>
+            </td>
+            <td class="px-4 py-4 text-right">
+              <div class="flex items-center justify-end gap-2">
+                <a
+                  href="/teacher/docs/{doc.assignment.document.id}/review/{doc.id}"
+                  class="btn btn-sm btn-secondary"
+                >
+                  <Eye class="w-4 h-4" />
+                  {docStatus === 'GRADED' ? 'Review' : 'Grade'}
+                </a>
+              </div>
+            </td>
+          </tr>
+        {/each}
+
+        {#if data.submissions.length === 0 && data.docSubmissions.length === 0}
           <tr>
             <td colspan="6" class="px-4 py-8 text-center text-gray-500">
               No submissions found
             </td>
           </tr>
-        {/each}
+        {/if}
       </tbody>
     </table>
   </div>

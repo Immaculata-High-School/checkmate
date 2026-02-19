@@ -320,11 +320,39 @@
                   <FileText class="w-4 h-4 text-blue-500" />
                   <div class="flex-1 min-w-0">
                     <div class="font-medium text-gray-900 text-sm truncate">{test.title}</div>
-                    <div class="text-xs text-gray-500">{test._count.questions} questions</div>
+                    <div class="text-xs text-gray-500">
+                      Test · {test._count.questions} questions · {test._count.submissions} submissions
+                    </div>
                   </div>
-                  <span class="badge {test.status === 'PUBLISHED' ? 'badge-green' : 'badge-gray'} text-xs" title="{test.status === 'PUBLISHED' ? 'Students can access this test' : 'Not yet visible to students'}">
+                  <span class="badge {test.status === 'PUBLISHED' ? 'badge-green' : 'badge-gray'} text-xs">
                     {test.status === 'PUBLISHED' ? 'Open' : 'Draft'}
                   </span>
+                </div>
+              </a>
+            {/each}
+
+            <!-- Document Assignments -->
+            {#each data.documentAssignments as docAssign}
+              <a href="/teacher/docs/{docAssign.documentId}/submissions?classId={data.class.id}" class="block px-4 py-3 hover:bg-gray-50">
+                <div class="flex items-center gap-3">
+                  {#if docAssign.type === 'VIEW_ONLY'}
+                    <Eye class="w-4 h-4 text-cyan-500" />
+                  {:else}
+                    <Edit3 class="w-4 h-4 text-teal-500" />
+                  {/if}
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium text-gray-900 text-sm truncate">{docAssign.title}</div>
+                    <div class="text-xs text-gray-500">
+                      {docAssign.type === 'VIEW_ONLY' ? 'View Only' : 'Document'}
+                      {#if docAssign.points} · {docAssign.points} pts{/if}
+                      {#if docAssign.type === 'MAKE_COPY'} · {docAssign.stats.submitted}/{docAssign.stats.totalStudents} submitted{/if}
+                    </div>
+                  </div>
+                  {#if docAssign.stats.graded > 0}
+                    <span class="badge badge-green text-xs">{docAssign.stats.graded} graded</span>
+                  {:else if docAssign.stats.submitted > 0}
+                    <span class="badge badge-yellow text-xs">{docAssign.stats.submitted} pending</span>
+                  {/if}
                 </div>
               </a>
             {/each}
@@ -337,7 +365,7 @@
                     <ClipboardList class="w-4 h-4 text-green-500" />
                     <div class="flex-1 min-w-0">
                       <div class="font-medium text-gray-900 text-sm truncate">{assignment.worksheet.title}</div>
-                      <div class="text-xs text-gray-500">Worksheet</div>
+                      <div class="text-xs text-gray-500">Worksheet · {assignment.worksheet._count.items} items</div>
                     </div>
                   </div>
                 </a>
@@ -348,7 +376,7 @@
                     <Library class="w-4 h-4 text-purple-500" />
                     <div class="flex-1 min-w-0">
                       <div class="font-medium text-gray-900 text-sm truncate">{assignment.studySet.title}</div>
-                      <div class="text-xs text-gray-500">Flashcard Set</div>
+                      <div class="text-xs text-gray-500">Flashcard Set · {assignment.studySet._count.cards} cards</div>
                     </div>
                   </div>
                 </a>
@@ -364,31 +392,6 @@
                   </div>
                 </a>
               {/if}
-            {/each}
-
-            <!-- Document Assignments -->
-            {#each data.documentAssignments as docAssign}
-              <a href="/teacher/docs/{docAssign.documentId}/submissions?classId={data.class.id}" class="block px-4 py-3 hover:bg-gray-50">
-                <div class="flex items-center gap-3">
-                  {#if docAssign.type === 'VIEW_ONLY'}
-                    <Eye class="w-4 h-4 text-cyan-500" />
-                  {:else}
-                    <Edit3 class="w-4 h-4 text-indigo-500" />
-                  {/if}
-                  <div class="flex-1 min-w-0">
-                    <div class="font-medium text-gray-900 text-sm truncate">{docAssign.title}</div>
-                    <div class="text-xs text-gray-500">
-                      {docAssign.type === 'VIEW_ONLY' ? 'View Only Document' : 'Document Assignment'}
-                      {#if docAssign.points} · {docAssign.points} pts{/if}
-                    </div>
-                  </div>
-                  {#if docAssign.type === 'MAKE_COPY'}
-                    <span class="text-xs text-gray-400">
-                      {docAssign.stats.submitted}/{docAssign.stats.totalStudents} submitted
-                    </span>
-                  {/if}
-                </div>
-              </a>
             {/each}
           </div>
         {/if}

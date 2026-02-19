@@ -12,7 +12,8 @@
     Edit3,
     Eye,
     Send,
-    Calendar
+    Calendar,
+    GraduationCap
   } from 'lucide-svelte';
   import type { PageData } from './$types';
 
@@ -65,6 +66,19 @@
   const docInProgress = $derived(data.documentAssignments?.filter(d => d.status === 'IN_PROGRESS') || []);
   const docPending = $derived(data.documentAssignments?.filter(d => !d.status || d.status === 'NOT_STARTED' || d.type === 'VIEW_ONLY') || []);
   const docCompleted = $derived(data.documentAssignments?.filter(d => ['SUBMITTED', 'RETURNED', 'RESUBMITTED'].includes(d.status || '')) || []);
+
+  // Combine all study materials into one list
+  const studyMaterials = $derived([
+    ...data.studyGuides.map(g => ({ ...g, materialType: 'study_guide' as const, href: `/student/study-guides/${g.id}` })),
+    ...(data.worksheets || []).map(w => ({ ...w, materialType: 'worksheet' as const, href: `/student/worksheets/${w.id}` })),
+    ...(data.studySets || []).map(s => ({ ...s, materialType: 'study_set' as const, href: `/student/study-sets/${s.id}` }))
+  ]);
+
+  const hasAnything = $derived(
+    data.totalTests > 0 || 
+    (data.documentAssignments?.length || 0) > 0 || 
+    studyMaterials.length > 0
+  );
 </script>
 
 <div class="max-w-4xl mx-auto">
@@ -81,7 +95,7 @@
   </div>
 
   <!-- Stats -->
-  <div class="grid grid-cols-4 gap-4 mb-8">
+  <div class="grid grid-cols-3 gap-4 mb-8">
     <div class="card p-4 text-center">
       <div class="text-2xl font-bold text-blue-600">{data.available.length + docPending.length}</div>
       <div class="text-sm text-gray-500">Available</div>
@@ -94,14 +108,10 @@
       <div class="text-2xl font-bold text-green-600">{data.completed.length + docCompleted.length}</div>
       <div class="text-sm text-gray-500">Completed</div>
     </div>
-    <div class="card p-4 text-center">
-      <div class="text-2xl font-bold text-indigo-600">{(data.documentAssignments?.length || 0) + data.studyGuides.length + (data.worksheets?.length || 0) + (data.studySets?.length || 0)}</div>
-      <div class="text-sm text-gray-500">Materials</div>
-    </div>
   </div>
 
-  <!-- In Progress Tests -->
-  {#if data.inProgress.length > 0}
+  <!-- Continue Where You Left Off (unified: tests + docs in progress) -->
+  {#if data.inProgress.length > 0 || docInProgress.length > 0}
     <div class="mb-8">
       <h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
         <AlertCircle class="w-5 h-5 text-yellow-500" />
@@ -115,7 +125,11 @@
             </div>
             <div class="flex-1">
               <div class="font-medium text-gray-900">{test.title}</div>
-              <div class="text-sm text-gray-500">{test.class.emoji} {test.class.name}</div>
+              <div class="text-sm text-gray-500 flex items-center gap-2">
+                <span>{test.class.emoji} {test.class.name}</span>
+                <span class="text-gray-300">|</span>
+                <span>Test · {test.questionCount} questions</span>
+              </div>
             </div>
             <div class="flex items-center gap-3">
               <span class="badge badge-yellow">Continue</span>
@@ -123,18 +137,6 @@
             </div>
           </a>
         {/each}
-      </div>
-    </div>
-  {/if}
-
-  <!-- In Progress Documents -->
-  {#if docInProgress.length > 0}
-    <div class="mb-8">
-      <h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-        <Edit3 class="w-5 h-5 text-yellow-500" />
-        Documents In Progress
-      </h2>
-      <div class="space-y-3">
         {#each docInProgress as doc}
           {@const due = formatDueDate(doc.dueDate)}
           <a href={doc.href} class="card p-4 flex items-center gap-4 hover:shadow-md transition-shadow border-l-4 border-yellow-500">
@@ -145,6 +147,8 @@
               <div class="font-medium text-gray-900">{doc.title}</div>
               <div class="text-sm text-gray-500 flex items-center gap-2">
                 <span>{doc.class.emoji || '📚'} {doc.class.name}</span>
+                <span class="text-gray-300">|</span>
+                <span>Document</span>
                 {#if due}
                   <span class="text-gray-300">|</span>
                   <span class="flex items-center gap-1 {due.class}">
@@ -164,12 +168,12 @@
     </div>
   {/if}
 
-  <!-- Available Assignments -->
-  {#if data.available.filter(t => !t.submission).length > 0}
+  <!-- Available (unified: tests + docs pending) -->
+  {#if data.available.filter(t => !t.submission).length > 0 || docPending.length > 0}
     <div class="mb-8">
       <h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
         <FileText class="w-5 h-5 text-blue-500" />
-        Available Assignments
+        Available
       </h2>
       <div class="space-y-3">
         {#each data.available.filter(t => !t.submission) as test}
@@ -182,7 +186,7 @@
               <div class="text-sm text-gray-500 flex items-center gap-3">
                 <span>{test.class.name}</span>
                 <span class="text-gray-300">|</span>
-                <span>{test.questionCount} questions</span>
+                <span>Test · {test.questionCount} questions</span>
                 {#if test.timeLimit}
                   <span class="text-gray-300">|</span>
                   <span class="flex items-center gap-1">
@@ -198,22 +202,10 @@
             </div>
           </a>
         {/each}
-      </div>
-    </div>
-  {/if}
-
-  <!-- Document Assignments -->
-  {#if docPending.length > 0}
-    <div class="mb-8">
-      <h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-        <FileText class="w-5 h-5 text-teal-500" />
-        Document Assignments
-      </h2>
-      <div class="space-y-3">
         {#each docPending as doc}
           {@const status = getDocStatusBadge(doc.status, doc.type)}
           {@const due = formatDueDate(doc.dueDate)}
-          <a href={doc.href} class="card p-4 flex items-center gap-4 hover:shadow-md transition-shadow border-l-4 border-teal-400">
+          <a href={doc.href} class="card p-4 flex items-center gap-4 hover:shadow-md transition-shadow">
             <div class="w-12 h-12 rounded-lg bg-teal-100 flex items-center justify-center">
               {#if doc.type === 'VIEW_ONLY'}
                 <Eye class="w-6 h-6 text-teal-600" />
@@ -225,10 +217,8 @@
               <div class="font-medium text-gray-900">{doc.title}</div>
               <div class="text-sm text-gray-500 flex items-center gap-2">
                 <span>{doc.class.emoji || '📚'} {doc.class.name}</span>
-                {#if doc.teacherName}
-                  <span class="text-gray-300">|</span>
-                  <span>by {doc.teacherName}</span>
-                {/if}
+                <span class="text-gray-300">|</span>
+                <span>Document{doc.type === 'VIEW_ONLY' ? ' · View Only' : ''}</span>
                 {#if due}
                   <span class="text-gray-300">|</span>
                   <span class="flex items-center gap-1 {due.class}">
@@ -252,56 +242,47 @@
     </div>
   {/if}
 
-  <!-- Study Materials -->
-  {#if data.studyGuides.length > 0}
+  <!-- Study Materials (unified: guides + worksheets + flashcards) -->
+  {#if studyMaterials.length > 0}
     <div class="mb-8">
       <h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
         <BookOpen class="w-5 h-5 text-amber-500" />
-        Study Guides
+        Study Materials
       </h2>
       <div class="space-y-3">
-        {#each data.studyGuides as guide}
-          <a href="/student/study-guides/{guide.id}" class="card p-4 flex items-center gap-4 hover:shadow-md transition-shadow border-l-4 border-amber-400">
-            <div class="w-12 h-12 rounded-lg bg-amber-100 flex items-center justify-center">
-              <BookOpen class="w-6 h-6 text-amber-600" />
+        {#each studyMaterials as material}
+          {@const isGuide = material.materialType === 'study_guide'}
+          {@const isWorksheet = material.materialType === 'worksheet'}
+          {@const isStudySet = material.materialType === 'study_set'}
+          {@const label = isGuide ? 'Study Guide' : isWorksheet ? 'Worksheet' : 'Flashcard Set'}
+          {@const badge = isGuide ? 'View' : isWorksheet ? 'Start' : 'Practice'}
+          <a href={material.href} class="card p-4 flex items-center gap-4 hover:shadow-md transition-shadow border-l-4 {isGuide ? 'border-amber-400' : isWorksheet ? 'border-green-400' : 'border-purple-400'}">
+            <div class="w-12 h-12 rounded-lg flex items-center justify-center {isGuide ? 'bg-amber-100' : isWorksheet ? 'bg-green-100' : 'bg-purple-100'}">
+              {#if isGuide}
+                <BookOpen class="w-6 h-6 text-amber-600" />
+              {:else if isWorksheet}
+                <ClipboardList class="w-6 h-6 text-green-600" />
+              {:else}
+                <Library class="w-6 h-6 text-purple-600" />
+              {/if}
             </div>
             <div class="flex-1">
-              <div class="font-medium text-gray-900">{guide.title}</div>
-              <div class="text-sm text-gray-500">{guide.class.emoji || '📚'} {guide.class.name}</div>
-            </div>
-            <div class="flex items-center gap-3">
-              <span class="badge badge-amber">View</span>
-              <ArrowRight class="w-5 h-5 text-gray-400" />
-            </div>
-          </a>
-        {/each}
-      </div>
-    </div>
-  {/if}
-
-  <!-- Worksheets -->
-  {#if data.worksheets && data.worksheets.length > 0}
-    <div class="mb-8">
-      <h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-        <ClipboardList class="w-5 h-5 text-green-500" />
-        Worksheets
-      </h2>
-      <div class="space-y-3">
-        {#each data.worksheets as worksheet}
-          <a href="/student/worksheets/{worksheet.id}" class="card p-4 flex items-center gap-4 hover:shadow-md transition-shadow border-l-4 border-green-400">
-            <div class="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center">
-              <ClipboardList class="w-6 h-6 text-green-600" />
-            </div>
-            <div class="flex-1">
-              <div class="font-medium text-gray-900">{worksheet.title}</div>
-              <div class="text-sm text-gray-500">
-                {worksheet.class.emoji || '📚'} {worksheet.class.name}
-                <span class="text-gray-300 mx-2">|</span>
-                {worksheet.itemCount} items
+              <div class="font-medium text-gray-900">{material.title}</div>
+              <div class="text-sm text-gray-500 flex items-center gap-2">
+                <span>{material.class.emoji || '📚'} {material.class.name}</span>
+                <span class="text-gray-300">|</span>
+                <span>{label}</span>
+                {#if isWorksheet && 'itemCount' in material}
+                  <span class="text-gray-300">|</span>
+                  <span>{material.itemCount} items</span>
+                {:else if isStudySet && 'cardCount' in material}
+                  <span class="text-gray-300">|</span>
+                  <span>{material.cardCount} cards</span>
+                {/if}
               </div>
             </div>
             <div class="flex items-center gap-3">
-              <span class="badge badge-green">Start</span>
+              <span class="badge {isGuide ? 'badge-amber' : isWorksheet ? 'badge-green' : 'badge-purple'}">{badge}</span>
               <ArrowRight class="w-5 h-5 text-gray-400" />
             </div>
           </a>
@@ -310,38 +291,7 @@
     </div>
   {/if}
 
-  <!-- Study Sets -->
-  {#if data.studySets && data.studySets.length > 0}
-    <div class="mb-8">
-      <h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-        <Library class="w-5 h-5 text-purple-500" />
-        Flashcard Sets
-      </h2>
-      <div class="space-y-3">
-        {#each data.studySets as studySet}
-          <a href="/student/study-sets/{studySet.id}" class="card p-4 flex items-center gap-4 hover:shadow-md transition-shadow border-l-4 border-purple-400">
-            <div class="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center">
-              <Library class="w-6 h-6 text-purple-600" />
-            </div>
-            <div class="flex-1">
-              <div class="font-medium text-gray-900">{studySet.title}</div>
-              <div class="text-sm text-gray-500">
-                {studySet.class.emoji || '📚'} {studySet.class.name}
-                <span class="text-gray-300 mx-2">|</span>
-                {studySet.cardCount} cards
-              </div>
-            </div>
-            <div class="flex items-center gap-3">
-              <span class="badge badge-purple">Practice</span>
-              <ArrowRight class="w-5 h-5 text-gray-400" />
-            </div>
-          </a>
-        {/each}
-      </div>
-    </div>
-  {/if}
-
-  <!-- Completed Assignments -->
+  <!-- Completed (unified: tests + docs) -->
   {#if data.completed.length > 0 || docCompleted.length > 0}
     <div>
       <h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -358,7 +308,11 @@
             </div>
             <div class="flex-1">
               <div class="font-medium text-gray-900">{test.title}</div>
-              <div class="text-sm text-gray-500">{test.class.name}</div>
+              <div class="text-sm text-gray-500">
+                {test.class.name}
+                <span class="text-gray-300 mx-1">|</span>
+                Test
+              </div>
             </div>
             <div class="flex items-center gap-3">
               {#if score}
@@ -369,20 +323,25 @@
           </a>
         {/each}
         
-        <!-- Completed Document Assignments -->
         {#each docCompleted as doc}
           {@const status = getDocStatusBadge(doc.status, doc.type)}
+          {@const hasPct = doc.grade !== null && doc.points}
           <a href={doc.href} class="card p-4 flex items-center gap-4 hover:shadow-md transition-shadow">
             <div class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center">
               <FileText class="w-6 h-6 text-gray-500" />
             </div>
             <div class="flex-1">
               <div class="font-medium text-gray-900">{doc.title}</div>
-              <div class="text-sm text-gray-500">{doc.class.emoji || '📚'} {doc.class.name}</div>
+              <div class="text-sm text-gray-500">
+                {doc.class.emoji || '📚'} {doc.class.name}
+                <span class="text-gray-300 mx-1">|</span>
+                Document
+              </div>
             </div>
             <div class="flex items-center gap-3">
-              {#if doc.grade !== null && doc.points}
-                <span class="font-medium text-gray-900">{doc.grade}/{doc.points}</span>
+              {#if hasPct}
+                {@const pct = Math.round(Math.min(100, (doc.grade || 0) / (doc.points || 1) * 100))}
+                <span class="font-medium text-gray-900">{doc.grade}/{doc.points} ({pct}%)</span>
               {/if}
               <span class="badge {status.class}">{status.text}</span>
             </div>
@@ -393,7 +352,7 @@
   {/if}
 
   <!-- Empty State -->
-  {#if data.totalTests === 0 && (!data.worksheets || data.worksheets.length === 0) && (!data.studySets || data.studySets.length === 0) && data.studyGuides.length === 0 && (!data.documentAssignments || data.documentAssignments.length === 0)}
+  {#if !hasAnything}
     <div class="card p-12 text-center">
       <BookOpen class="w-16 h-16 text-gray-300 mx-auto mb-4" />
       <h3 class="text-lg font-medium text-gray-900 mb-2">No Assignments Yet</h3>

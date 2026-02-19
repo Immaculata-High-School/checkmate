@@ -1,12 +1,13 @@
 import { prisma } from '$lib/server/db';
 import { fail } from '@sveltejs/kit';
 import { shuttleAI } from '$lib/server/shuttleai';
-import { canMakeRequest, recordRequest, getRateLimitStatus } from '$lib/server/rateLimiter';
+import { canMakeRequest, recordRequest, queueGrading, getSubmissionsGradingQueue } from '$lib/server/rateLimiter';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
   const status = url.searchParams.get('status') || '';
   const testId = url.searchParams.get('test') || '';
+  const type = url.searchParams.get('type') || '';
 
   const where: any = {
     test: { teacherId: locals.user!.id }
@@ -20,35 +21,82 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     where.testId = testId;
   }
 
-  const submissions = await prisma.testSubmission.findMany({
-    where,
-    include: {
-      student: {
-        select: { id: true, name: true, email: true }
-      },
-      test: {
-        select: { id: true, title: true }
-      },
-      answers: {
-        include: {
-          question: true
+  const [submissions, tests, docSubmissions, documents] = await Promise.all([
+    // Only fetch test submissions if not filtering to documents only
+    type !== 'document' ? prisma.testSubmission.findMany({
+      where,
+      include: {
+        student: {
+          select: { id: true, name: true, email: true }
+        },
+        test: {
+          select: { id: true, title: true }
+        },
+        answers: {
+          include: {
+            question: true
+          }
         }
-      }
-    },
-    orderBy: { submittedAt: 'desc' }
-  });
+      },
+      orderBy: { submittedAt: 'desc' }
+    }) : Promise.resolve([]),
 
-  // Get tests for filter
-  const tests = await prisma.test.findMany({
-    where: { teacherId: locals.user!.id },
-    select: { id: true, title: true },
-    orderBy: { createdAt: 'desc' }
-  });
+    // Get tests for filter
+    prisma.test.findMany({
+      where: { teacherId: locals.user!.id },
+      select: { id: true, title: true },
+      orderBy: { createdAt: 'desc' }
+    }),
+
+    // Get doc submissions if not filtering to tests only
+    type !== 'test' ? prisma.studentDocument.findMany({
+      where: {
+        assignment: {
+          document: { ownerId: locals.user!.id }
+        },
+        ...(status === 'GRADED' ? { grade: { not: null } } : {}),
+        ...(status === 'SUBMITTED' ? { status: 'SUBMITTED' } : {}),
+        ...(status === 'IN_PROGRESS' ? { status: 'IN_PROGRESS' } : {})
+      },
+      include: {
+        student: {
+          select: { id: true, name: true, email: true }
+        },
+        assignment: {
+          select: {
+            id: true,
+            title: true,
+            points: true,
+            document: {
+              select: { id: true, title: true }
+            }
+          }
+        }
+      },
+      orderBy: { submittedAt: 'desc' }
+    }) : Promise.resolve([]),
+
+    // Get documents for filter
+    prisma.document.findMany({
+      where: {
+        ownerId: locals.user!.id,
+        assignments: { some: {} }
+      },
+      select: { id: true, title: true },
+      orderBy: { createdAt: 'desc' }
+    })
+  ]);
+
+  // Get grading queue status for these submissions
+  const gradingQueue = await getSubmissionsGradingQueue(submissions.map(s => s.id));
 
   return {
     submissions,
     tests,
-    filters: { status, testId }
+    docSubmissions,
+    documents,
+    filters: { status, testId, type },
+    gradingQueue
   };
 };
 
@@ -119,20 +167,10 @@ export const actions: Actions = {
       return fail(400, { error: 'Submission ID required' });
     }
 
-    // Check rate limit
-    if (!canMakeRequest()) {
-      const status = getRateLimitStatus();
-      const waitTime = status.nextSlotAvailableIn ? Math.ceil(status.nextSlotAvailableIn / 1000) : 60;
-      return fail(429, { error: `Rate limited. Please try again in ${waitTime} seconds.` });
-    }
-
     const submission = await prisma.testSubmission.findUnique({
       where: { id: submissionId },
       include: {
         test: true,
-        answers: {
-          include: { question: true }
-        },
         student: true
       }
     });
@@ -141,106 +179,15 @@ export const actions: Actions = {
       return fail(404, { error: 'Submission not found' });
     }
 
-    // Get org membership for AI tracking
-    const membership = await prisma.organizationMember.findFirst({
-      where: { userId: locals.user!.id }
+    // Queue the submission for grading (processed sequentially with retries)
+    await queueGrading({
+      submissionId: submission.id,
+      testId: submission.testId,
+      studentId: submission.studentId,
+      priority: 2 // Higher priority for teacher-initiated grading
     });
 
-    // Create AI job for tracking
-    const job = await prisma.aIJob.create({
-      data: {
-        type: 'TEST_GRADING',
-        status: 'RUNNING',
-        input: {
-          testTitle: submission.test.title,
-          submissionId: submission.id,
-          studentId: submission.studentId,
-          studentName: submission.student.name,
-          questionCount: submission.answers.length
-        },
-        entityId: submission.test.id,
-        entityType: 'TEST',
-        userId: locals.user!.id,
-        orgId: membership?.organizationId,
-        startedAt: new Date()
-      }
-    });
-
-    // Record this request for rate limiting
-    recordRequest();
-
-    try {
-      // Use AI to grade the entire test with test-specific settings
-      const result = await shuttleAI.gradeTestComprehensive({
-        testTitle: submission.test.title,
-        answers: submission.answers.map(a => ({
-          id: a.id,
-          question: a.question.question,
-          correctAnswer: a.question.correctAnswer || '',
-          studentAnswer: a.answer || '',
-          questionType: a.question.type,
-          points: a.question.points
-        })),
-        allowPartialCredit: (submission.test as any).aiPartialCredit ?? true,
-        gradingHarshness: (submission.test as any).aiGradingHarshness ?? 50
-      }, { userId: locals.user!.id, orgId: membership?.organizationId });
-
-      // Update each answer with AI grading
-      for (const gradedAnswer of result.gradedAnswers) {
-        await prisma.answer.update({
-          where: { id: gradedAnswer.id },
-          data: {
-            pointsAwarded: gradedAnswer.pointsAwarded,
-            isCorrect: gradedAnswer.isCorrect,
-            feedback: gradedAnswer.feedback
-          }
-        });
-      }
-
-      // Update submission with total score
-      await prisma.testSubmission.update({
-        where: { id: submissionId },
-        data: {
-          status: 'GRADED',
-          score: result.totalScore,
-          totalPoints: result.totalPoints,
-          feedback: result.overallFeedback,
-          gradedAt: new Date()
-        }
-      });
-
-      // Update job as completed
-      await prisma.aIJob.update({
-        where: { id: job.id },
-        data: {
-          status: 'COMPLETED',
-          progress: 100,
-          output: {
-            totalScore: result.totalScore,
-            totalPoints: result.totalPoints,
-            gradedAnswersCount: result.gradedAnswers.length,
-            overallFeedback: result.overallFeedback
-          },
-          completedAt: new Date()
-        }
-      });
-
-      return { aiSuccess: true, message: 'AI grading completed successfully' };
-    } catch (error) {
-      console.error('AI grading error:', error);
-      
-      // Update job as failed
-      await prisma.aIJob.update({
-        where: { id: job.id },
-        data: {
-          status: 'FAILED',
-          error: error instanceof Error ? error.message : 'AI grading failed',
-          completedAt: new Date()
-        }
-      });
-      
-      return fail(500, { error: 'AI grading failed. Please try manual grading.' });
-    }
+    return { aiQueued: true, message: 'Submission queued for AI grading.' };
   },
 
   aiGradeAnswer: async ({ request, locals }) => {
@@ -264,6 +211,13 @@ export const actions: Actions = {
     const membership = await prisma.organizationMember.findFirst({
       where: { userId: locals.user!.id }
     });
+
+    // Check rate limit before single-answer grading
+    if (!canMakeRequest()) {
+      return fail(429, { error: 'Rate limited. Please wait a moment and try again.' });
+    }
+
+    recordRequest();
 
     try {
       const result = await shuttleAI.gradeAnswer({

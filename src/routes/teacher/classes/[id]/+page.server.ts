@@ -22,7 +22,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
               title: true,
               status: true,
               _count: {
-                select: { questions: true }
+                select: { questions: true, submissions: true }
               }
             }
           }
@@ -31,10 +31,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       assignments: {
         include: {
           worksheet: {
-            select: { id: true, title: true }
+            select: { id: true, title: true, _count: { select: { items: true } } }
           },
           studySet: {
-            select: { id: true, title: true }
+            select: { id: true, title: true, _count: { select: { cards: true } } }
           },
           studyGuide: {
             select: { id: true, title: true }
