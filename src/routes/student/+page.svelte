@@ -23,7 +23,7 @@
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
         <h2 class="text-2xl font-bold text-gray-900 mb-1">
-          Hey, {data.user?.name?.split(' ')[0]}!
+          Hey, {data.user?.name?.split(' ')[0]}! 👋
         </h2>
         <p class="text-gray-600">
           {#if data.upcomingAssignments.length > 0}
@@ -109,7 +109,7 @@
           <p class="text-sm text-gray-400">Enjoy your free time.</p>
         </div>
       {:else}
-        <div class="space-y-3">
+        <div class="space-y-2">
           {#each data.upcomingAssignments as assignment}
             <a
               href={assignment.test
@@ -117,7 +117,7 @@
                 : assignment.studySet
                   ? `/student/study-sets/${assignment.studySet.id}`
                   : '#'}
-              class="flex items-center justify-between p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+              class="flex items-center justify-between p-4 rounded-xl bg-gray-50 hover:bg-gray-100 transition-all group"
             >
               <div class="flex items-center gap-4">
                 <span class="text-2xl">{assignment.class.emoji || '📚'}</span>
@@ -135,7 +135,7 @@
                     <div class="font-medium text-gray-700">{formatDate(assignment.dueDate)}</div>
                   </div>
                 {/if}
-                <ArrowRight class="w-5 h-5 text-gray-300" />
+                <ArrowRight class="w-5 h-5 text-gray-300 group-hover:text-gray-500 group-hover:translate-x-0.5 transition-all" />
               </div>
             </a>
           {/each}
@@ -159,9 +159,9 @@
           <p class="text-sm text-gray-400">Complete an assignment to see your results here.</p>
         </div>
       {:else}
-        <div class="space-y-3">
+        <div class="space-y-2">
           {#each data.recentSubmissions as submission}
-            <div class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors">
+            <div class="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors">
               <div>
                 <div class="font-medium text-gray-900">{submission.test.title}</div>
                 <div class="text-sm text-gray-500">
@@ -197,7 +197,7 @@
           {/each}
           {#each data.recentDocSubmissions as doc}
             {@const percentage = doc.assignment.points ? Math.round(Math.min(100, (doc.grade || 0) / doc.assignment.points * 100)) : 0}
-            <div class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors">
+            <div class="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors">
               <div>
                 <div class="font-medium text-gray-900">{doc.assignment.title || doc.assignment.document.title}</div>
                 <div class="text-sm text-gray-500">

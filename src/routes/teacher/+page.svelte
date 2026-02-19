@@ -1,38 +1,58 @@
 <script lang="ts">
-  import { Users, FileText, ClipboardList, BookOpen, Plus, ArrowRight } from 'lucide-svelte';
+  import { Users, FileText, ClipboardList, BookOpen, Plus, ArrowRight, TrendingUp, Inbox } from 'lucide-svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
 </script>
 
-<div class="max-w-6xl mx-auto">
+<div class="max-w-7xl mx-auto space-y-8">
   <!-- Stats -->
-  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-    <div class="stat-card">
-      <div class="stat-value">{data.stats.totalClasses}</div>
-      <div class="stat-label">Classes</div>
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="stats-card">
+      <div class="stats-icon bg-gradient-to-br from-blue-500 to-blue-600">
+        <Users class="w-6 h-6" />
+      </div>
+      <div>
+        <div class="text-2xl font-bold text-gray-900">{data.stats.totalClasses}</div>
+        <div class="text-sm text-gray-500">Classes</div>
+      </div>
     </div>
-    <div class="stat-card">
-      <div class="stat-value">{data.stats.totalStudents}</div>
-      <div class="stat-label">Students</div>
+    <div class="stats-card">
+      <div class="stats-icon bg-gradient-to-br from-green-500 to-emerald-600">
+        <TrendingUp class="w-6 h-6" />
+      </div>
+      <div>
+        <div class="text-2xl font-bold text-gray-900">{data.stats.totalStudents}</div>
+        <div class="text-sm text-gray-500">Students</div>
+      </div>
     </div>
-    <div class="stat-card">
-      <div class="stat-value">{data.stats.totalTests}</div>
-      <div class="stat-label">Tests</div>
+    <div class="stats-card">
+      <div class="stats-icon bg-gradient-to-br from-purple-500 to-purple-600">
+        <FileText class="w-6 h-6" />
+      </div>
+      <div>
+        <div class="text-2xl font-bold text-gray-900">{data.stats.totalTests}</div>
+        <div class="text-sm text-gray-500">Tests</div>
+      </div>
     </div>
-    <div class="stat-card">
-      <div class="stat-value">{data.stats.pendingSubmissions}</div>
-      <div class="stat-label">Pending Grading</div>
+    <div class="stats-card">
+      <div class="stats-icon bg-gradient-to-br from-amber-500 to-orange-500">
+        <Inbox class="w-6 h-6" />
+      </div>
+      <div>
+        <div class="text-2xl font-bold text-gray-900">{data.stats.pendingSubmissions}</div>
+        <div class="text-sm text-gray-500">Pending Grading</div>
+      </div>
     </div>
   </div>
 
   <!-- Quick Actions -->
-  <div class="mb-8">
+  <div>
     <h2 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
     <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <a href="/teacher/tests/create" class="card p-4 hover:border-blue-300 transition-colors">
+      <a href="/teacher/tests/create" class="card p-4 hover:border-blue-300 hover:bg-blue-50/40 transition-all group">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+          <div class="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
             <FileText class="w-5 h-5 text-blue-600" />
           </div>
           <div>
@@ -42,9 +62,9 @@
         </div>
       </a>
 
-      <a href="/teacher/worksheets/create" class="card p-4 hover:border-blue-300 transition-colors">
+      <a href="/teacher/worksheets/create" class="card p-4 hover:border-green-300 hover:bg-green-50/40 transition-all group">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+          <div class="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
             <ClipboardList class="w-5 h-5 text-green-600" />
           </div>
           <div>
@@ -54,9 +74,9 @@
         </div>
       </a>
 
-      <a href="/teacher/classes/create" class="card p-4 hover:border-blue-300 transition-colors">
+      <a href="/teacher/classes/create" class="card p-4 hover:border-purple-300 hover:bg-purple-50/40 transition-all group">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+          <div class="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
             <Users class="w-5 h-5 text-purple-600" />
           </div>
           <div>
@@ -66,9 +86,9 @@
         </div>
       </a>
 
-      <a href="/teacher/study-sets/create" class="card p-4 hover:border-blue-300 transition-colors">
+      <a href="/teacher/study-sets/create" class="card p-4 hover:border-amber-300 hover:bg-amber-50/40 transition-all group">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+          <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
             <BookOpen class="w-5 h-5 text-amber-600" />
           </div>
           <div>
@@ -83,9 +103,9 @@
   <div class="grid lg:grid-cols-2 gap-6">
     <!-- Recent Tests -->
     <div class="card">
-      <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <h3 class="font-semibold text-gray-900">Recent Tests</h3>
-        <a href="/teacher/tests" class="text-sm text-blue-600 hover:underline">View all</a>
+        <a href="/teacher/tests" class="text-sm text-blue-600 hover:text-blue-700 font-medium">View all</a>
       </div>
       <div class="p-4">
         {#if data.recentTests.length === 0}
@@ -99,9 +119,9 @@
             </a>
           </div>
         {:else}
-          <div class="space-y-3">
+          <div class="space-y-2">
             {#each data.recentTests as test}
-              <a href="/teacher/tests/{test.id}" class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50">
+              <a href="/teacher/tests/{test.id}" class="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors">
                 <div>
                   <div class="font-medium text-gray-900">{test.title}</div>
                   <div class="text-sm text-gray-500">
@@ -120,9 +140,9 @@
 
     <!-- Recent Submissions -->
     <div class="card">
-      <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <h3 class="font-semibold text-gray-900">Recent Submissions</h3>
-        <a href="/teacher/submissions" class="text-sm text-blue-600 hover:underline">View all</a>
+        <a href="/teacher/submissions" class="text-sm text-blue-600 hover:text-blue-700 font-medium">View all</a>
       </div>
       <div class="p-4">
         {#if data.recentSubmissions.length === 0}
@@ -132,11 +152,11 @@
             <div class="empty-state-text">Submissions will appear here when students complete tests.</div>
           </div>
         {:else}
-          <div class="space-y-3">
+          <div class="space-y-2">
             {#each data.recentSubmissions as submission}
               {@const totalScore = (submission.score || 0) + (submission.bonusPoints || 0)}
               {@const percentage = Math.round(Math.min(100, totalScore / (submission.totalPoints || 1) * 100))}
-              <div class="flex items-center justify-between p-3 rounded-lg hover:bg-gray-50">
+              <div class="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors">
                 <div>
                   <div class="font-medium text-gray-900">{submission.student.name}</div>
                   <div class="text-sm text-gray-500">{submission.test.title}</div>

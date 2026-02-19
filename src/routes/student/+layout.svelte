@@ -175,7 +175,7 @@
             </button>
 
             {#if userMenuOpen}
-              <div class="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+              <div class="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-50">
                 <a
                   href="/account"
                   onclick={() => (userMenuOpen = false)}
