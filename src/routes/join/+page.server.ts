@@ -82,17 +82,30 @@ export const actions: Actions = {
 
     // For new users or login
     if (isNewUser) {
-      const name = formData.get('name')?.toString().trim();
+      const firstName = formData.get('firstName')?.toString().trim();
+      const lastName = formData.get('lastName')?.toString().trim();
       const email = formData.get('email')?.toString().toLowerCase().trim();
       const password = formData.get('password')?.toString();
+      const birthdateStr = formData.get('birthdate')?.toString();
 
-      if (!name || !email || !password) {
+      if (!firstName || !lastName || !email || !password) {
         return fail(400, { error: 'All fields are required', step: 'register', classCode, className: classData.name });
       }
 
       if (password.length < 8) {
         return fail(400, { error: 'Password must be at least 8 characters', step: 'register', classCode, className: classData.name });
       }
+
+      if (!birthdateStr) {
+        return fail(400, { error: 'Date of birth is required', step: 'register', classCode, className: classData.name });
+      }
+
+      const birthdate = new Date(birthdateStr);
+      if (isNaN(birthdate.getTime())) {
+        return fail(400, { error: 'Invalid date of birth', step: 'register', classCode, className: classData.name });
+      }
+
+      const name = `${firstName} ${lastName}`;
 
       const existingUser = await prisma.user.findUnique({ where: { email } });
       if (existingUser) {
@@ -106,7 +119,8 @@ export const actions: Actions = {
           name,
           email,
           password: hashedPassword,
-          platformRole: 'USER'
+          platformRole: 'USER',
+          birthdate
         }
       });
 

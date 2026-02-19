@@ -1,6 +1,6 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
-  import { ArrowLeft, User, Mail, Lock } from 'lucide-svelte';
+  import { ArrowLeft, User, Mail, Lock, Calendar } from 'lucide-svelte';
   import ChessKing from '$lib/components/ChessKing.svelte';
   import type { ActionData, PageData } from './$types';
 
@@ -37,7 +37,6 @@
           method="POST"
           use:enhance={({ formData }) => {
             loading = true;
-            // Don't include auth fields when just checking code
             return async ({ result, update }) => {
               loading = false;
               if (result.type === 'failure' && result.data?.step === 'code') {
@@ -126,15 +125,40 @@
           <input type="hidden" name="isNewUser" value={isNewUser.toString()} />
 
           {#if isNewUser}
+            <div class="grid grid-cols-2 gap-4">
+              <div class="form-group">
+                <label for="firstName" class="label">First Name</label>
+                <input
+                  id="firstName"
+                  name="firstName"
+                  type="text"
+                  required
+                  class="input"
+                  placeholder="First"
+                />
+              </div>
+              <div class="form-group">
+                <label for="lastName" class="label">Last Name</label>
+                <input
+                  id="lastName"
+                  name="lastName"
+                  type="text"
+                  required
+                  class="input"
+                  placeholder="Last"
+                />
+              </div>
+            </div>
+
             <div class="form-group">
-              <label for="name" class="label">Full Name</label>
+              <label for="birthdate" class="label">Date of Birth</label>
               <input
-                id="name"
-                name="name"
-                type="text"
+                id="birthdate"
+                name="birthdate"
+                type="date"
                 required
                 class="input"
-                placeholder="Your name"
+                max={new Date().toISOString().split('T')[0]}
               />
             </div>
           {/if}

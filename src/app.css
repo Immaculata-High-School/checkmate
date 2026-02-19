@@ -20,16 +20,20 @@
   --font-sans: 'Inter', system-ui, sans-serif;
 }
 
-* {
-  box-sizing: border-box;
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #f9fafb;
+    color: #111827;
+    line-height: 1.5;
+  }
 }
 
-body {
-  font-family: var(--font-sans);
-  background-color: #f9fafb;
-  color: #111827;
-  line-height: 1.5;
-}
+@layer components {
 
 /* Simple card */
 .card {
@@ -1206,3 +1210,4 @@ body {
   border-bottom: 1px solid #000;
   height: 28px;
 }
+} /* end @layer components */
