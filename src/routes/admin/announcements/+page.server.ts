@@ -1,5 +1,6 @@
 import { prisma } from '$lib/server/db';
 import { fail } from '@sveltejs/kit';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
@@ -21,7 +22,8 @@ export const load: PageServerLoad = async () => {
 };
 
 export const actions: Actions = {
-  create: async ({ request, locals }) => {
+  create: async (event) => {
+    const { request, locals } = event;
     const formData = await request.formData();
     const title = formData.get('title')?.toString().trim();
     const content = formData.get('content')?.toString().trim();
@@ -48,11 +50,13 @@ export const actions: Actions = {
       }
     });
 
+    logAudit({ userId: locals.user?.id, action: 'ADMIN_ANNOUNCEMENT_CREATED', entityType: 'Announcement', details: { title, type }, ...getRequestInfo(event) });
+
     return { success: true };
   },
 
-  toggle: async ({ request }) => {
-    const formData = await request.formData();
+  toggle: async (event) => {
+    const formData = await event.request.formData();
     const id = formData.get('id')?.toString();
 
     if (!id) {
@@ -72,11 +76,13 @@ export const actions: Actions = {
       data: { isActive: !announcement.isActive }
     });
 
+    logAudit({ userId: event.locals.user?.id, action: announcement.isActive ? 'ADMIN_ANNOUNCEMENT_DISABLED' : 'ADMIN_ANNOUNCEMENT_ENABLED', entityType: 'Announcement', entityId: id, details: { title: announcement.title }, ...getRequestInfo(event) });
+
     return { success: true };
   },
 
-  delete: async ({ request }) => {
-    const formData = await request.formData();
+  delete: async (event) => {
+    const formData = await event.request.formData();
     const id = formData.get('id')?.toString();
 
     if (!id) {
@@ -86,6 +92,8 @@ export const actions: Actions = {
     await prisma.systemAnnouncement.delete({
       where: { id }
     });
+
+    logAudit({ userId: event.locals.user?.id, action: 'ADMIN_ANNOUNCEMENT_DELETED', entityType: 'Announcement', entityId: id, ...getRequestInfo(event) });
 
     return { success: true };
   }

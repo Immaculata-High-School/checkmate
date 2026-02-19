@@ -1,5 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -10,8 +11,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-  default: async ({ request }) => {
-    const formData = await request.formData();
+  default: async (event) => {
+    const formData = await event.request.formData();
     const organizationName = formData.get('organizationName')?.toString().trim();
     const organizationType = formData.get('organizationType')?.toString();
     const contactName = formData.get('contactName')?.toString().trim();
@@ -56,7 +57,7 @@ export const actions: Actions = {
     }
 
     // Create organization request
-    await prisma.organizationRequest.create({
+    const orgRequest = await prisma.organizationRequest.create({
       data: {
         organizationName,
         organizationType: (organizationType as any) || 'SCHOOL',
@@ -71,6 +72,8 @@ export const actions: Actions = {
         status: 'PENDING'
       }
     });
+
+    logAudit({ action: 'ORG_REQUEST_CREATED', entityType: 'OrganizationRequest', entityId: orgRequest.id, details: { organizationName, contactEmail }, ...getRequestInfo(event) });
 
     return { success: true };
   }

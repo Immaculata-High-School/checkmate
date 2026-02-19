@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
 import { generateCode } from '$lib/utils';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
@@ -8,7 +9,8 @@ export const load: PageServerLoad = async () => {
 };
 
 export const actions: Actions = {
-  default: async ({ request, locals }) => {
+  default: async (event) => {
+    const { request, locals } = event;
     const formData = await request.formData();
     const name = formData.get('name')?.toString().trim();
     const description = formData.get('description')?.toString().trim();
@@ -31,6 +33,8 @@ export const actions: Actions = {
         organizationId: membership?.orgId || null
       }
     });
+
+    logAudit({ userId: locals.user!.id, action: 'CLASS_CREATED', entityType: 'Class', entityId: cls.id, details: { name }, ...getRequestInfo(event) });
 
     throw redirect(302, `/teacher/classes/${cls.id}`);
   }

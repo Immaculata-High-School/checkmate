@@ -2,6 +2,7 @@ import { prisma } from '$lib/server/db';
 import { fail } from '@sveltejs/kit';
 import { generateCode } from '$lib/utils';
 import { sendOrganizationInvite } from '$lib/server/email';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -65,8 +66,8 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-  create: async ({ request }) => {
-    const formData = await request.formData();
+  create: async (event) => {
+    const formData = await event.request.formData();
     const name = formData.get('name')?.toString();
     const type = formData.get('type')?.toString() as any;
     const ownerEmail = formData.get('ownerEmail')?.toString();
@@ -146,11 +147,13 @@ export const actions: Actions = {
       await sendOrganizationInvite(ownerEmail, name, 'ORG_OWNER', inviteToken);
     }
 
+    logAudit({ userId: event.locals.user?.id, action: 'ADMIN_ORG_CREATED', entityType: 'Organization', entityId: organization.id, details: { name, type, ownerEmail, subscriptionTier }, ...getRequestInfo(event) });
+
     return { success: true, organizationId: organization.id };
   },
 
-  toggleActive: async ({ request }) => {
-    const formData = await request.formData();
+  toggleActive: async (event) => {
+    const formData = await event.request.formData();
     const id = formData.get('id')?.toString();
 
     if (!id) {
@@ -167,24 +170,30 @@ export const actions: Actions = {
       data: { isActive: !org.isActive }
     });
 
+    logAudit({ userId: event.locals.user?.id, action: org.isActive ? 'ADMIN_ORG_DEACTIVATED' : 'ADMIN_ORG_ACTIVATED', entityType: 'Organization', entityId: id, details: { name: org.name }, ...getRequestInfo(event) });
+
     return { success: true };
   },
 
-  delete: async ({ request }) => {
-    const formData = await request.formData();
+  delete: async (event) => {
+    const formData = await event.request.formData();
     const id = formData.get('id')?.toString();
 
     if (!id) {
       return fail(400, { error: 'Organization ID required' });
     }
 
+    const org = await prisma.organization.findUnique({ where: { id }, select: { name: true } });
     await prisma.organization.delete({ where: { id } });
+
+    logAudit({ userId: event.locals.user?.id, action: 'ADMIN_ORG_DELETED', entityType: 'Organization', entityId: id, details: { name: org?.name }, ...getRequestInfo(event) });
 
     return { success: true };
   },
 
-  addBalance: async ({ request, locals }) => {
-    const formData = await request.formData();
+  addBalance: async (event) => {
+    const { locals } = event;
+    const formData = await event.request.formData();
     const id = formData.get('id')?.toString();
     const amount = parseFloat(formData.get('amount')?.toString() || '0');
     const description = formData.get('description')?.toString() || 'Admin credit';
@@ -224,11 +233,13 @@ export const actions: Actions = {
       })
     ]);
 
+    logAudit({ userId: locals.user?.id, action: 'ADMIN_ORG_BALANCE_ADDED', entityType: 'Organization', entityId: id, details: { amount, newBalance, description, orgName: org.name }, ...getRequestInfo(event) });
+
     return { success: true, balanceAdded: true, amount, newBalance };
   },
 
-  updateMonthlyFee: async ({ request }) => {
-    const formData = await request.formData();
+  updateMonthlyFee: async (event) => {
+    const formData = await event.request.formData();
     const id = formData.get('id')?.toString();
     const monthlyUserFee = parseFloat(formData.get('monthlyUserFee')?.toString() || '5');
 
@@ -250,11 +261,13 @@ export const actions: Actions = {
       data: { monthlyUserFee }
     });
 
+    logAudit({ userId: event.locals.user?.id, action: 'ADMIN_ORG_FEE_UPDATED', entityType: 'Organization', entityId: id, details: { monthlyUserFee, orgName: org.name }, ...getRequestInfo(event) });
+
     return { success: true, feeUpdated: true };
   },
 
-  toggleBilling: async ({ request }) => {
-    const formData = await request.formData();
+  toggleBilling: async (event) => {
+    const formData = await event.request.formData();
     const id = formData.get('id')?.toString();
 
     if (!id) {
@@ -270,6 +283,8 @@ export const actions: Actions = {
       where: { id },
       data: { billingEnabled: !org.billingEnabled }
     });
+
+    logAudit({ userId: event.locals.user?.id, action: org.billingEnabled ? 'ADMIN_ORG_BILLING_DISABLED' : 'ADMIN_ORG_BILLING_ENABLED', entityType: 'Organization', entityId: id, details: { name: org.name }, ...getRequestInfo(event) });
 
     return { success: true };
   }

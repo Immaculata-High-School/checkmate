@@ -2,6 +2,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
 import { generateCode } from '$lib/utils';
 import { sendOrganizationInvite, sendRequestApproved, sendRequestRejected } from '$lib/server/email';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -17,8 +18,9 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions: Actions = {
-  approve: async ({ params, locals, request }) => {
-    const formData = await request.formData();
+  approve: async (event) => {
+    const { params, locals } = event;
+    const formData = await event.request.formData();
     const monthlyUserFee = parseFloat(formData.get('monthlyUserFee')?.toString() || '5');
 
     const req = await prisma.organizationRequest.findUnique({
@@ -108,11 +110,14 @@ export const actions: Actions = {
       }
     });
 
+    logAudit({ userId: locals.user?.id, action: 'ADMIN_REQUEST_APPROVED', entityType: 'OrganizationRequest', entityId: params.id, details: { organizationName: req.organizationName, organizationId: organization.id }, ...getRequestInfo(event) });
+
     throw redirect(302, '/admin/requests');
   },
 
-  reject: async ({ params, request, locals }) => {
-    const formData = await request.formData();
+  reject: async (event) => {
+    const { params, locals } = event;
+    const formData = await event.request.formData();
     const reason = formData.get('reason')?.toString();
 
     const req = await prisma.organizationRequest.findUnique({
@@ -139,6 +144,8 @@ export const actions: Actions = {
 
     // Send rejection email
     await sendRequestRejected(req.contactEmail, req.organizationName, reason);
+
+    logAudit({ userId: locals.user?.id, action: 'ADMIN_REQUEST_REJECTED', entityType: 'OrganizationRequest', entityId: params.id, details: { organizationName: req.organizationName, reason }, ...getRequestInfo(event) });
 
     throw redirect(302, '/admin/requests');
   }

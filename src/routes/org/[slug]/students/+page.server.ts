@@ -3,6 +3,7 @@ import { prisma } from '$lib/server/db';
 import { invalidateUserOrgCache } from '$lib/server/auth';
 import { sendPasswordReset } from '$lib/server/email';
 import { generateCode } from '$lib/utils';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import bcrypt from 'bcryptjs';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -102,7 +103,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 };
 
 export const actions: Actions = {
-  impersonate: async ({ request, params, cookies, locals }) => {
+  impersonate: async (event) => {
+    const { request, params, cookies, locals } = event;
     if (!locals.user) throw error(401, 'Not authenticated');
     await requireOrgAdmin(params.slug, locals.user.id);
 
@@ -155,10 +157,13 @@ export const actions: Actions = {
       maxAge: 60 * 60 * 2
     });
 
+    logAudit({ userId: locals.user.id, action: 'ORG_ADMIN_IMPERSONATE_STUDENT', entityType: 'User', entityId: userId, details: { orgSlug: params.slug }, ...getRequestInfo(event) });
+
     return { impersonating: true, redirect: '/student' };
   },
 
-  resetPassword: async ({ request, params, locals }) => {
+  resetPassword: async (event) => {
+    const { request, params, locals } = event;
     if (!locals.user) throw error(401, 'Not authenticated');
     await requireOrgAdmin(params.slug, locals.user.id);
 
@@ -195,10 +200,13 @@ export const actions: Actions = {
 
     await sendPasswordReset(user.email, token);
 
+    logAudit({ userId: locals.user.id, action: 'ORG_ADMIN_PASSWORD_RESET', entityType: 'User', entityId: userId, details: { email: user.email, orgSlug: params.slug }, ...getRequestInfo(event) });
+
     return { success: true, message: `Password reset email sent to ${user.email}` };
   },
 
-  setTempPassword: async ({ request, params, locals }) => {
+  setTempPassword: async (event) => {
+    const { request, params, locals } = event;
     if (!locals.user) throw error(401, 'Not authenticated');
     await requireOrgAdmin(params.slug, locals.user.id);
 
@@ -217,10 +225,13 @@ export const actions: Actions = {
       data: { password: hashedPassword }
     });
 
+    logAudit({ userId: locals.user.id, action: 'ORG_ADMIN_TEMP_PASSWORD_SET', entityType: 'User', entityId: userId, details: { orgSlug: params.slug }, ...getRequestInfo(event) });
+
     return { success: true, tempPassword, message: 'Temporary password set.' };
   },
 
-  toggleSuspend: async ({ request, params, locals }) => {
+  toggleSuspend: async (event) => {
+    const { request, params, locals } = event;
     if (!locals.user) throw error(401, 'Not authenticated');
     await requireOrgAdmin(params.slug, locals.user.id);
 
@@ -245,10 +256,13 @@ export const actions: Actions = {
       data: { suspended: !user.suspended }
     });
 
+    logAudit({ userId: locals.user.id, action: user.suspended ? 'ORG_ADMIN_STUDENT_UNSUSPENDED' : 'ORG_ADMIN_STUDENT_SUSPENDED', entityType: 'User', entityId: userId, details: { orgSlug: params.slug }, ...getRequestInfo(event) });
+
     return { success: true, message: user.suspended ? 'Student unsuspended' : 'Student suspended' };
   },
 
-  removeStudent: async ({ request, params, locals }) => {
+  removeStudent: async (event) => {
+    const { request, params, locals } = event;
     if (!locals.user) throw error(401, 'Not authenticated');
     await requireOrgAdmin(params.slug, locals.user.id);
 
@@ -272,6 +286,8 @@ export const actions: Actions = {
     });
 
     invalidateUserOrgCache(member.userId);
+
+    logAudit({ userId: locals.user.id, action: 'ORG_ADMIN_STUDENT_REMOVED', entityType: 'OrganizationMember', entityId: memberId, details: { removedUserId: member.userId, orgSlug: params.slug }, ...getRequestInfo(event) });
 
     return { success: true, message: 'Student removed from organization' };
   }

@@ -1,5 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { RequestHandler } from './$types';
 
 // Helper to check if user can access document
@@ -90,7 +91,8 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 };
 
 // PATCH /api/docs/[id] - Update a document
-export const PATCH: RequestHandler = async ({ params, request, locals }) => {
+export const PATCH: RequestHandler = async (event) => {
+  const { params, request, locals } = event;
   if (!locals.user) {
     throw error(401, 'Not authenticated');
   }
@@ -124,11 +126,14 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
     }
   });
 
+  logAudit({ userId: locals.user.id, action: 'DOCUMENT_UPDATED', entityType: 'Document', entityId: params.id, details: { title, visibility, isArchived }, ...getRequestInfo(event) });
+
   return json({ document });
 };
 
 // DELETE /api/docs/[id] - Delete a document
-export const DELETE: RequestHandler = async ({ params, locals }) => {
+export const DELETE: RequestHandler = async (event) => {
+  const { params, locals } = event;
   if (!locals.user) {
     throw error(401, 'Not authenticated');
   }
@@ -149,6 +154,8 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
   await prisma.document.delete({
     where: { id: params.id }
   });
+
+  logAudit({ userId: locals.user.id, action: 'DOCUMENT_DELETED', entityType: 'Document', entityId: params.id, details: { title: document.title }, ...getRequestInfo(event) });
 
   return json({ success: true });
 };

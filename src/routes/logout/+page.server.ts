@@ -1,14 +1,15 @@
 import { redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
 import { invalidateSessionCache } from '$lib/server/cache';
+import { logAudit } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 // Handle GET requests - redirect to login
-export const load: PageServerLoad = async ({ cookies }) => {
+export const load: PageServerLoad = async ({ cookies, locals }) => {
   const sessionId = cookies.get('auth_session');
 
   if (sessionId) {
-    // Invalidate session cache first
+    logAudit({ userId: locals.user?.id, action: 'LOGOUT' });
     invalidateSessionCache(sessionId);
     
     await prisma.session.delete({

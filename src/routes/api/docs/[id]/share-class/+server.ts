@@ -1,9 +1,11 @@
 import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { RequestHandler } from './$types';
 
 // POST /api/docs/[id]/share-class - Share document with a class
-export const POST: RequestHandler = async ({ params, request, locals }) => {
+export const POST: RequestHandler = async (event) => {
+  const { params, request, locals } = event;
   if (!locals.user) {
     throw error(401, 'Not authenticated');
   }
@@ -56,11 +58,14 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
     }
   });
 
+  logAudit({ userId: locals.user.id, action: 'DOCUMENT_SHARED_CLASS', entityType: 'Document', entityId: params.id, details: { classId, canEdit }, ...getRequestInfo(event) });
+
   return json({ share }, { status: 201 });
 };
 
 // DELETE /api/docs/[id]/share-class - Remove class share
-export const DELETE: RequestHandler = async ({ params, request, locals }) => {
+export const DELETE: RequestHandler = async (event) => {
+  const { params, request, locals } = event;
   if (!locals.user) {
     throw error(401, 'Not authenticated');
   }
@@ -91,6 +96,8 @@ export const DELETE: RequestHandler = async ({ params, request, locals }) => {
       classId
     }
   });
+
+  logAudit({ userId: locals.user.id, action: 'DOCUMENT_UNSHARED_CLASS', entityType: 'Document', entityId: params.id, details: { classId }, ...getRequestInfo(event) });
 
   return json({ success: true });
 };

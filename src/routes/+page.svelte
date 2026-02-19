@@ -158,9 +158,12 @@
         </div>
         <span class="font-semibold text-gray-900">Checkmate</span>
       </div>
-      <p class="text-sm text-gray-500">
-        &copy; 2025 Checkmate. All rights reserved.
-      </p>
+      <div class="flex items-center gap-4">
+        <a href="/security" class="text-sm text-gray-500 hover:text-gray-700">Security & Privacy</a>
+        <p class="text-sm text-gray-500">
+          &copy; 2025 Checkmate. All rights reserved.
+        </p>
+      </div>
     </div>
   </footer>
 </div>

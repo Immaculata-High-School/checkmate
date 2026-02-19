@@ -3,6 +3,7 @@
  */
 import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import * as powerSchool from '$lib/server/powerschool';
 import type { RequestHandler } from './$types';
 
@@ -95,7 +96,8 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 };
 
 // POST - Perform actions
-export const POST: RequestHandler = async ({ request, locals }) => {
+export const POST: RequestHandler = async (event) => {
+  const { request, locals } = event;
   if (!locals.user) {
     throw error(401, 'Unauthorized');
   }
@@ -107,6 +109,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     switch (action) {
       case 'disconnect': {
         await powerSchool.disconnect(locals.user.id);
+        logAudit({ userId: locals.user.id, action: 'POWERSCHOOL_DISCONNECTED', entityType: 'PowerSchool', ...getRequestInfo(event) });
         return json({ success: true });
       }
 
@@ -147,6 +150,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
           }
         });
 
+        logAudit({ userId: locals.user.id, action: 'POWERSCHOOL_MAPPING_SAVED', entityType: 'PowerSchoolClassMapping', entityId: classId, details: { sectionId, sectionName }, ...getRequestInfo(event) });
+
         return json({ success: true, mapping });
       }
 
@@ -169,6 +174,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         await prisma.powerSchoolClassMapping.delete({
           where: { classId }
         }).catch(() => {});
+
+        logAudit({ userId: locals.user.id, action: 'POWERSCHOOL_MAPPING_REMOVED', entityType: 'PowerSchoolClassMapping', entityId: classId, ...getRequestInfo(event) });
 
         return json({ success: true });
       }
@@ -200,6 +207,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             submissionIds
           }
         );
+
+        logAudit({ userId: locals.user.id, action: 'POWERSCHOOL_GRADES_RELEASED', entityType: 'Test', entityId: testId, details: { classId, assignmentName }, ...getRequestInfo(event) });
 
         return json(result);
       }

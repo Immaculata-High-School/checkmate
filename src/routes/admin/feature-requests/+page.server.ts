@@ -1,6 +1,7 @@
 import { prisma } from '$lib/server/db';
 import { fail } from '@sveltejs/kit';
 import { sendFeatureRequestResponse } from '$lib/server/email';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -66,12 +67,12 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-  respond: async ({ request, locals }) => {
-    if (!locals.user) {
+  respond: async (event) => {
+    if (!event.locals.user) {
       return fail(401, { error: 'Unauthorized' });
     }
 
-    const formData = await request.formData();
+    const formData = await event.request.formData();
     const id = formData.get('id')?.toString();
     const status = formData.get('status')?.toString();
     const adminResponse = formData.get('adminResponse')?.toString();
@@ -94,10 +95,12 @@ export const actions: Actions = {
       data: {
         status,
         adminResponse,
-        respondedById: locals.user.id,
+        respondedById: event.locals.user.id,
         respondedAt: new Date()
       }
     });
+
+    logAudit({ userId: event.locals.user.id, action: 'ADMIN_FEATURE_REQUEST_RESPONDED', entityType: 'FeatureRequest', entityId: id, details: { status, title: featureRequest.title }, ...getRequestInfo(event) });
 
     // Send email notification
     await sendFeatureRequestResponse(
@@ -105,18 +108,18 @@ export const actions: Actions = {
       featureRequest.title,
       status,
       adminResponse,
-      locals.user.name || undefined
+      event.locals.user.name || undefined
     );
 
     return { success: true };
   },
 
-  updateStatus: async ({ request, locals }) => {
-    if (!locals.user) {
+  updateStatus: async (event) => {
+    if (!event.locals.user) {
       return fail(401, { error: 'Unauthorized' });
     }
 
-    const formData = await request.formData();
+    const formData = await event.request.formData();
     const id = formData.get('id')?.toString();
     const status = formData.get('status')?.toString();
 
@@ -129,11 +132,13 @@ export const actions: Actions = {
       data: { status }
     });
 
+    logAudit({ userId: event.locals.user.id, action: 'ADMIN_FEATURE_REQUEST_STATUS_UPDATED', entityType: 'FeatureRequest', entityId: id, details: { status }, ...getRequestInfo(event) });
+
     return { success: true };
   },
 
-  delete: async ({ request }) => {
-    const formData = await request.formData();
+  delete: async (event) => {
+    const formData = await event.request.formData();
     const id = formData.get('id')?.toString();
 
     if (!id) {
@@ -143,6 +148,8 @@ export const actions: Actions = {
     await prisma.featureRequest.delete({
       where: { id }
     });
+
+    logAudit({ userId: event.locals.user?.id, action: 'ADMIN_FEATURE_REQUEST_DELETED', entityType: 'FeatureRequest', entityId: id, ...getRequestInfo(event) });
 
     return { success: true };
   }

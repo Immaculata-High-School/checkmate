@@ -9,7 +9,9 @@
     Clock,
     Filter,
     Eye,
-    Globe
+    Globe,
+    Calendar,
+    X
   } from 'lucide-svelte';
   import type { PageData } from './$types';
   import { goto } from '$app/navigation';
@@ -17,23 +19,46 @@
 
   let { data }: { data: PageData } = $props();
 
-  let search = $state(data.filters.action);
+  let search = $state(data.filters.search);
+  let actionFilter = $state(data.filters.action);
   let selectedOrg = $state(data.filters.orgId);
   let selectedEntityType = $state(data.filters.entityType);
+  let userIdFilter = $state(data.filters.userId);
+  let dateFrom = $state(data.filters.dateFrom);
+  let dateTo = $state(data.filters.dateTo);
 
-  function applyFilters() {
+  function buildFilterParams() {
     const params = new URLSearchParams();
-    if (search) params.set('action', search);
+    if (search) params.set('search', search);
+    if (actionFilter) params.set('action', actionFilter);
     if (selectedOrg) params.set('orgId', selectedOrg);
     if (selectedEntityType) params.set('entityType', selectedEntityType);
+    if (userIdFilter) params.set('userId', userIdFilter);
+    if (dateFrom) params.set('dateFrom', dateFrom);
+    if (dateTo) params.set('dateTo', dateTo);
+    return params;
+  }
+
+  function applyFilters() {
+    const params = buildFilterParams();
     goto(`/admin/audit-logs?${params.toString()}`);
   }
 
   function clearFilters() {
     search = '';
+    actionFilter = '';
     selectedOrg = '';
     selectedEntityType = '';
+    userIdFilter = '';
+    dateFrom = '';
+    dateTo = '';
     goto('/admin/audit-logs');
+  }
+
+  function paginationUrl(targetPage: number) {
+    const params = buildFilterParams();
+    params.set('page', String(targetPage));
+    return `/admin/audit-logs?${params.toString()}`;
   }
 
   function formatDate(date: Date | string) {
@@ -41,10 +66,14 @@
   }
 
   function getActionColor(action: string) {
-    if (action.includes('CREATE') || action.includes('ADD')) return 'text-green-600 bg-green-100';
-    if (action.includes('DELETE') || action.includes('REMOVE')) return 'text-red-600 bg-red-100';
-    if (action.includes('UPDATE') || action.includes('EDIT')) return 'text-blue-600 bg-blue-100';
-    if (action.includes('LOGIN') || action.includes('AUTH')) return 'text-purple-600 bg-purple-100';
+    if (action.includes('DELETE') || action.includes('REMOVE') || action.includes('REJECTED')) return 'text-red-600 bg-red-100';
+    if (action.includes('CREATE') || action.includes('ADD') || action.includes('APPROVED')) return 'text-green-600 bg-green-100';
+    if (action.includes('UPDATE') || action.includes('EDIT') || action.includes('CHANGED')) return 'text-blue-600 bg-blue-100';
+    if (action.includes('LOGIN') || action.includes('AUTH') || action.includes('LOGOUT') || action.includes('PASSWORD')) return 'text-purple-600 bg-purple-100';
+    if (action.includes('ADMIN') || action.includes('IMPERSONATE')) return 'text-orange-600 bg-orange-100';
+    if (action.includes('SUSPEND') || action.includes('BLOCK') || action.includes('DISABLE')) return 'text-red-600 bg-red-100';
+    if (action.includes('PUBLISH') || action.includes('ASSIGN') || action.includes('SHARE')) return 'text-teal-600 bg-teal-100';
+    if (action.includes('SYSTEM') || action.includes('BILLING')) return 'text-gray-600 bg-gray-200';
     return 'text-gray-600 bg-gray-100';
   }
 
@@ -68,6 +97,27 @@
     }
     expandedLogs = newSet;
   }
+
+  let hasActiveFilters = $derived(
+    search || actionFilter || selectedOrg || selectedEntityType || userIdFilter || dateFrom || dateTo
+  );
+
+  // Generate page numbers for pagination
+  function getPageNumbers(current: number, total: number) {
+    const pages: (number | '...')[] = [];
+    if (total <= 7) {
+      for (let i = 1; i <= total; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (current > 3) pages.push('...');
+      for (let i = Math.max(2, current - 1); i <= Math.min(total - 1, current + 1); i++) {
+        pages.push(i);
+      }
+      if (current < total - 2) pages.push('...');
+      pages.push(total);
+    }
+    return pages;
+  }
 </script>
 
 <div class="max-w-7xl mx-auto">
@@ -90,24 +140,42 @@
   <!-- Filters -->
   <div class="card mb-6">
     <div class="p-4">
-      <div class="flex items-center gap-2 mb-4">
-        <Filter class="w-4 h-4 text-gray-500" />
-        <span class="font-medium text-gray-700">Filters</span>
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
+          <Filter class="w-4 h-4 text-gray-500" />
+          <span class="font-medium text-gray-700">Filters</span>
+        </div>
+        {#if hasActiveFilters}
+          <button onclick={clearFilters} class="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
+            <X class="w-3 h-3" />
+            Clear all
+          </button>
+        {/if}
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <!-- Search bar -->
+      <div class="mb-4">
+        <div class="relative">
+          <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            bind:value={search}
+            placeholder="Search by action, entity, user name or email..."
+            class="input pl-10 w-full"
+            onkeydown={(e) => e.key === 'Enter' && applyFilters()}
+          />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <div>
           <label class="label">Action</label>
-          <div class="relative">
-            <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              bind:value={search}
-              placeholder="Search actions..."
-              class="input pl-10"
-              onkeydown={(e) => e.key === 'Enter' && applyFilters()}
-            />
-          </div>
+          <select bind:value={actionFilter} class="input">
+            <option value="">All Actions</option>
+            {#each data.filterOptions.actions as action}
+              <option value={action}>{action}</option>
+            {/each}
+          </select>
         </div>
 
         <div>
@@ -130,14 +198,44 @@
           </select>
         </div>
 
-        <div class="flex items-end gap-2">
-          <button onclick={applyFilters} class="btn btn-primary flex-1">
-            Apply Filters
-          </button>
+        <div>
+          <label class="label">User ID</label>
+          <input
+            type="text"
+            bind:value={userIdFilter}
+            placeholder="Filter by user ID..."
+            class="input"
+          />
+        </div>
+
+        <div>
+          <label class="label">From Date</label>
+          <input
+            type="date"
+            bind:value={dateFrom}
+            class="input"
+          />
+        </div>
+
+        <div>
+          <label class="label">To Date</label>
+          <input
+            type="date"
+            bind:value={dateTo}
+            class="input"
+          />
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 mt-4">
+        <button onclick={applyFilters} class="btn btn-primary">
+          Apply Filters
+        </button>
+        {#if hasActiveFilters}
           <button onclick={clearFilters} class="btn btn-secondary">
             Clear
           </button>
-        </div>
+        {/if}
       </div>
     </div>
   </div>
@@ -253,21 +351,31 @@
     {#if data.totalPages > 1}
       <div class="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
         <div class="text-sm text-gray-500">
-          Page {data.page} of {data.totalPages}
+          Showing {((data.page - 1) * 50) + 1}–{Math.min(data.page * 50, data.total)} of {data.total.toLocaleString()} entries
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1">
           <a
-            href="/admin/audit-logs?page={Math.max(1, data.page - 1)}{data.filters.action ? `&action=${data.filters.action}` : ''}{data.filters.orgId ? `&orgId=${data.filters.orgId}` : ''}"
+            href={paginationUrl(Math.max(1, data.page - 1))}
             class="btn btn-secondary btn-sm {data.page === 1 ? 'opacity-50 pointer-events-none' : ''}"
           >
             <ChevronLeft class="w-4 h-4" />
-            Previous
           </a>
+          {#each getPageNumbers(data.page, data.totalPages) as p}
+            {#if p === '...'}
+              <span class="px-2 text-gray-400">…</span>
+            {:else}
+              <a
+                href={paginationUrl(p)}
+                class="btn btn-sm {p === data.page ? 'btn-primary' : 'btn-secondary'}"
+              >
+                {p}
+              </a>
+            {/if}
+          {/each}
           <a
-            href="/admin/audit-logs?page={Math.min(data.totalPages, data.page + 1)}{data.filters.action ? `&action=${data.filters.action}` : ''}{data.filters.orgId ? `&orgId=${data.filters.orgId}` : ''}"
+            href={paginationUrl(Math.min(data.totalPages, data.page + 1))}
             class="btn btn-secondary btn-sm {data.page === data.totalPages ? 'opacity-50 pointer-events-none' : ''}"
           >
-            Next
             <ChevronRight class="w-4 h-4" />
           </a>
         </div>

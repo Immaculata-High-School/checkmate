@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { lucia } from '$lib/server/auth';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import bcrypt from 'bcryptjs';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -10,7 +11,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 };
 
 export const actions: Actions = {
-  default: async ({ request, cookies, locals }) => {
+  default: async (event) => {
+    const { request, cookies, locals } = event;
     const formData = await request.formData();
     const classCode = formData.get('classCode')?.toString().toUpperCase().trim();
     const isNewUser = formData.get('isNewUser') === 'true';
@@ -55,7 +57,7 @@ export const actions: Actions = {
         }
       });
 
-      // Add to org if class has one
+      logAudit({ userId: locals.user.id, action: 'CLASS_JOINED', entityType: 'Class', entityId: classData.id, organizationId: classData.organizationId, details: { className: classData.name }, ...getRequestInfo(event) });
       if (classData.organizationId) {
         const existingOrgMember = await prisma.organizationMember.findUnique({
           where: {
@@ -152,6 +154,8 @@ export const actions: Actions = {
         ...sessionCookie.attributes
       });
 
+      logAudit({ userId: user.id, action: 'STUDENT_REGISTERED', entityType: 'Class', entityId: classData.id, organizationId: classData.organizationId, details: { email, className: classData.name }, ...getRequestInfo(event) });
+
       throw redirect(302, '/student');
     } else {
       // Login existing user
@@ -221,6 +225,8 @@ export const actions: Actions = {
         path: '.',
         ...sessionCookie.attributes
       });
+
+      logAudit({ userId: user.id, action: 'LOGIN_AND_CLASS_JOINED', entityType: 'Class', entityId: classData.id, organizationId: classData.organizationId, details: { className: classData.name }, ...getRequestInfo(event) });
 
       throw redirect(302, '/student');
     }

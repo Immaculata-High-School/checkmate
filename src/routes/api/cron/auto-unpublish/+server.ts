@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { prisma } from '$lib/server/db';
+import { logAudit } from '$lib/server/audit';
 import { env } from '$env/dynamic/private';
 
 export const GET: RequestHandler = async ({ request }) => {
@@ -56,6 +57,8 @@ export const GET: RequestHandler = async ({ request }) => {
 		});
 
 		console.log(`[Auto-Unpublish] Unpublished ${result.count} tests:`, testsToUnpublish.map((t: { title: string }) => t.title));
+
+		logAudit({ action: 'SYSTEM_AUTO_UNPUBLISH', entityType: 'Test', details: { count: result.count, tests: testsToUnpublish.map((t: { id: string; title: string }) => t.title) } });
 
 		return json({
 			success: true,

@@ -1,5 +1,6 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import bcrypt from 'bcryptjs';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -24,7 +25,8 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions: Actions = {
-  default: async ({ params, request }) => {
+  default: async (event) => {
+    const { params, request } = event;
     const formData = await request.formData();
     const password = formData.get('password')?.toString();
     const confirmPassword = formData.get('confirmPassword')?.toString();
@@ -49,10 +51,12 @@ export const actions: Actions = {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Update user password
-    await prisma.user.update({
+    const updatedUser = await prisma.user.update({
       where: { email: resetToken.email },
       data: { password: hashedPassword }
     });
+
+    logAudit({ userId: updatedUser.id, action: 'PASSWORD_RESET_COMPLETED', details: { email: resetToken.email }, ...getRequestInfo(event) });
 
     // Delete the token
     await prisma.passwordResetToken.delete({

@@ -20,6 +20,7 @@
     AlertTriangle,
     Lightbulb
   } from 'lucide-svelte';
+  import PowerSchoolIcon from '$lib/components/PowerSchoolIcon.svelte';
   import type { LayoutData } from './$types';
   import LoadingBar from '$lib/components/LoadingBar.svelte';
 
@@ -35,6 +36,7 @@
     { href: `/org/${data.organization.slug}/teachers`, label: 'Teachers', icon: Users },
     { href: `/org/${data.organization.slug}/classes`, label: 'Classes', icon: BookOpen },
     { href: `/org/${data.organization.slug}/students`, label: 'Students', icon: GraduationCap },
+    { href: `/org/${data.organization.slug}/powerschool`, label: 'PowerSchool', icon: PowerSchoolIcon },
     { href: `/org/${data.organization.slug}/billing`, label: 'Billing', icon: CreditCard, warn: data.hasBillingIssue },
     { href: `/org/${data.organization.slug}/feature-request`, label: 'Feature Request', icon: Lightbulb },
     { href: `/org/${data.organization.slug}/settings`, label: 'Settings', icon: Settings }

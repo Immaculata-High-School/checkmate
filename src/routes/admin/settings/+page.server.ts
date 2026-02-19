@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
 import { fetchAvailableModels } from '$lib/server/shuttleai';
 import { stopQueueProcessor, startQueueProcessor } from '$lib/server/rateLimiter';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -91,8 +92,8 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-  updateAI: async ({ request }) => {
-    const formData = await request.formData();
+  updateAI: async (event) => {
+    const formData = await event.request.formData();
     const aiModel = formData.get('aiModel')?.toString();
 
     if (!aiModel) {
@@ -108,11 +109,13 @@ export const actions: Actions = {
       }
     });
 
+    logAudit({ userId: event.locals.user?.id, action: 'ADMIN_AI_MODEL_UPDATED', entityType: 'SystemConfig', details: { aiModel }, ...getRequestInfo(event) });
+
     return { success: true, message: 'AI settings updated successfully' };
   },
 
-  updateFeatures: async ({ request }) => {
-    const formData = await request.formData();
+  updateFeatures: async (event) => {
+    const formData = await event.request.formData();
     const features = {
       aiTestGeneration: formData.get('aiTestGeneration') === 'on',
       aiGrading: formData.get('aiGrading') === 'on',
@@ -130,10 +133,12 @@ export const actions: Actions = {
       }
     });
 
+    logAudit({ userId: event.locals.user?.id, action: 'ADMIN_FEATURES_UPDATED', entityType: 'SystemConfig', details: features, ...getRequestInfo(event) });
+
     return { featureSuccess: true, message: 'Feature settings updated successfully' };
   },
 
-  stopAllAIJobs: async () => {
+  stopAllAIJobs: async (event) => {
     // Stop the queue processor
     stopQueueProcessor();
 
@@ -152,14 +157,16 @@ export const actions: Actions = {
     // Restart the queue processor
     startQueueProcessor();
 
+    logAudit({ userId: event.locals.user?.id, action: 'ADMIN_AI_JOBS_STOPPED', entityType: 'SystemConfig', details: { cancelledJobs: cancelledJobs.count, cancelledQueue: cancelledQueue.count }, ...getRequestInfo(event) });
+
     return {
       success: true,
       message: `Stopped all AI jobs. Cancelled ${cancelledJobs.count} AI jobs and ${cancelledQueue.count} grading queue items.`
     };
   },
 
-  clearGrades: async ({ request }) => {
-    const formData = await request.formData();
+  clearGrades: async (event) => {
+    const formData = await event.request.formData();
     const testId = formData.get('testId')?.toString();
 
     if (!testId) {
@@ -203,6 +210,8 @@ export const actions: Actions = {
     await prisma.gradingQueue.deleteMany({
       where: { testId }
     });
+
+    logAudit({ userId: event.locals.user?.id, action: 'ADMIN_GRADES_CLEARED', entityType: 'Test', entityId: testId, details: { testTitle: test.title, submissionsReset: updatedSubmissions.count, answersCleared: updatedAnswers.count }, ...getRequestInfo(event) });
 
     return {
       success: true,

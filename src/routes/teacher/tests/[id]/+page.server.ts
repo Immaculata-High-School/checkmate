@@ -1,5 +1,6 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -48,7 +49,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
-  publish: async ({ params, request, locals }) => {
+  publish: async (event) => {
+    const { params, request, locals } = event;
     const test = await prisma.test.findUnique({
       where: { id: params.id }
     });
@@ -72,10 +74,13 @@ export const actions: Actions = {
       data: updateData
     });
 
+    logAudit({ userId: locals.user!.id, action: 'TEST_PUBLISHED', entityType: 'Test', entityId: params.id, ...getRequestInfo(event) });
+
     return { success: true };
   },
 
-  unpublish: async ({ params, locals }) => {
+  unpublish: async (event) => {
+    const { params, locals } = event;
     const test = await prisma.test.findUnique({
       where: { id: params.id }
     });
@@ -89,10 +94,13 @@ export const actions: Actions = {
       data: { status: 'DRAFT' }
     });
 
+    logAudit({ userId: locals.user!.id, action: 'TEST_UNPUBLISHED', entityType: 'Test', entityId: params.id, ...getRequestInfo(event) });
+
     return { success: true };
   },
 
-  delete: async ({ params, locals }) => {
+  delete: async (event) => {
+    const { params, locals } = event;
     const test = await prisma.test.findUnique({
       where: { id: params.id }
     });
@@ -105,10 +113,13 @@ export const actions: Actions = {
       where: { id: params.id }
     });
 
+    logAudit({ userId: locals.user!.id, action: 'TEST_DELETED', entityType: 'Test', entityId: params.id, ...getRequestInfo(event) });
+
     throw redirect(302, '/teacher/tests');
   },
 
-  assignClass: async ({ params, request, locals }) => {
+  assignClass: async (event) => {
+    const { params, request, locals } = event;
     const formData = await request.formData();
     const classId = formData.get('classId')?.toString();
 
@@ -144,6 +155,8 @@ export const actions: Actions = {
         testId: params.id
       }
     });
+
+    logAudit({ userId: locals.user!.id, action: 'TEST_CLASS_ASSIGNED', entityType: 'Test', entityId: params.id, details: { classId }, ...getRequestInfo(event) });
 
     return { success: true };
   }

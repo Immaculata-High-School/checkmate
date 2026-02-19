@@ -1,5 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -51,7 +52,8 @@ async function requireOrgAdminAccess(slug: string, userId: string) {
 }
 
 export const actions: Actions = {
-  update: async ({ request, locals, params }) => {
+  update: async (event) => {
+    const { request, locals, params } = event;
     if (!locals.user) {
       return fail(401, { error: 'Not authenticated' });
     }
@@ -98,10 +100,13 @@ export const actions: Actions = {
       }
     });
 
+    logAudit({ userId: locals.user.id, action: 'ORG_ADMIN_CLASS_UPDATED', entityType: 'Class', entityId: classId, details: { name, archived, orgSlug: params.slug }, ...getRequestInfo(event) });
+
     return { success: true };
   },
 
-  delete: async ({ request, locals, params }) => {
+  delete: async (event) => {
+    const { request, locals, params } = event;
     if (!locals.user) {
       return fail(401, { error: 'Not authenticated' });
     }
@@ -132,6 +137,8 @@ export const actions: Actions = {
     await prisma.class.delete({
       where: { id: classId }
     });
+
+    logAudit({ userId: locals.user.id, action: 'ORG_ADMIN_CLASS_DELETED', entityType: 'Class', entityId: classId, details: { orgSlug: params.slug }, ...getRequestInfo(event) });
 
     return { success: true };
   }

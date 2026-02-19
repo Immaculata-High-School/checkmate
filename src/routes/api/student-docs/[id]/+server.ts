@@ -1,5 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { RequestHandler } from './$types';
 
 // GET /api/student-docs/[id] - Get a student document
@@ -59,7 +60,8 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 };
 
 // PATCH /api/student-docs/[id] - Update student document (save work)
-export const PATCH: RequestHandler = async ({ params, request, locals }) => {
+export const PATCH: RequestHandler = async (event) => {
+  const { params, request, locals } = event;
   if (!locals.user) {
     throw error(401, 'Not authenticated');
   }
@@ -106,6 +108,8 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
       }
     });
 
+    logAudit({ userId: locals.user.id, action: 'STUDENT_DOC_UPDATED', entityType: 'StudentDocument', entityId: params.id, ...getRequestInfo(event) });
+
     return json({ document: updated });
   }
 
@@ -127,6 +131,8 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
       data: updateData
     });
 
+    logAudit({ userId: locals.user.id, action: returnToStudent ? 'STUDENT_DOC_RETURNED' : 'STUDENT_DOC_GRADED', entityType: 'StudentDocument', entityId: params.id, details: { grade, returnToStudent }, ...getRequestInfo(event) });
+
     return json({ document: updated });
   }
 
@@ -134,7 +140,8 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 };
 
 // POST /api/student-docs/[id]/submit - Submit work
-export const POST: RequestHandler = async ({ params, locals }) => {
+export const POST: RequestHandler = async (event) => {
+  const { params, locals } = event;
   if (!locals.user) {
     throw error(401, 'Not authenticated');
   }
@@ -166,6 +173,8 @@ export const POST: RequestHandler = async ({ params, locals }) => {
       submittedAt: new Date()
     }
   });
+
+  logAudit({ userId: locals.user.id, action: 'STUDENT_DOC_SUBMITTED', entityType: 'StudentDocument', entityId: params.id, details: { status: newStatus }, ...getRequestInfo(event) });
 
   return json({ document: updated });
 };

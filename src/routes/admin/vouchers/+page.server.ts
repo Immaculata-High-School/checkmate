@@ -1,5 +1,6 @@
 import { prisma } from '$lib/server/db';
 import { fail } from '@sveltejs/kit';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { PageServerLoad, Actions } from './$types';
 
 function generateVoucherCode(): string {
@@ -59,7 +60,8 @@ export const load: PageServerLoad = async () => {
 };
 
 export const actions: Actions = {
-  create: async ({ request, locals }) => {
+  create: async (event) => {
+    const { request, locals } = event;
     const formData = await request.formData();
     const amount = parseFloat(formData.get('amount')?.toString() || '0');
     const maxUsesStr = formData.get('maxUses')?.toString();
@@ -92,11 +94,13 @@ export const actions: Actions = {
       }
     });
 
+    logAudit({ userId: locals.user?.id, action: 'ADMIN_VOUCHER_CREATED', entityType: 'Voucher', details: { code, amount, maxUses: maxUsesStr }, ...getRequestInfo(event) });
+
     return { success: true, code };
   },
 
-  toggle: async ({ request }) => {
-    const formData = await request.formData();
+  toggle: async (event) => {
+    const formData = await event.request.formData();
     const id = formData.get('id')?.toString();
 
     if (!id) {
@@ -116,11 +120,13 @@ export const actions: Actions = {
       data: { isActive: !voucher.isActive }
     });
 
+    logAudit({ userId: event.locals.user?.id, action: voucher.isActive ? 'ADMIN_VOUCHER_DISABLED' : 'ADMIN_VOUCHER_ENABLED', entityType: 'Voucher', entityId: id, details: { code: voucher.code }, ...getRequestInfo(event) });
+
     return { success: true };
   },
 
-  delete: async ({ request }) => {
-    const formData = await request.formData();
+  delete: async (event) => {
+    const formData = await event.request.formData();
     const id = formData.get('id')?.toString();
 
     if (!id) {
@@ -136,6 +142,8 @@ export const actions: Actions = {
         where: { id }
       })
     ]);
+
+    logAudit({ userId: event.locals.user?.id, action: 'ADMIN_VOUCHER_DELETED', entityType: 'Voucher', entityId: id, ...getRequestInfo(event) });
 
     return { success: true };
   }

@@ -10,6 +10,9 @@ export const load: PageServerLoad = async ({ url }) => {
   const userId = url.searchParams.get('userId') || '';
   const orgId = url.searchParams.get('orgId') || '';
   const entityType = url.searchParams.get('entityType') || '';
+  const search = url.searchParams.get('search') || '';
+  const dateFrom = url.searchParams.get('dateFrom') || '';
+  const dateTo = url.searchParams.get('dateTo') || '';
 
   const where: any = {};
 
@@ -24,6 +27,24 @@ export const load: PageServerLoad = async ({ url }) => {
   }
   if (entityType) {
     where.entityType = entityType;
+  }
+  if (search) {
+    where.OR = [
+      { action: { contains: search, mode: 'insensitive' } },
+      { entityType: { contains: search, mode: 'insensitive' } },
+      { entityId: { contains: search, mode: 'insensitive' } },
+      { user: { name: { contains: search, mode: 'insensitive' } } },
+      { user: { email: { contains: search, mode: 'insensitive' } } }
+    ];
+  }
+  if (dateFrom || dateTo) {
+    where.createdAt = {};
+    if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+    if (dateTo) {
+      const endDate = new Date(dateTo);
+      endDate.setHours(23, 59, 59, 999);
+      where.createdAt.lte = endDate;
+    }
   }
 
   const [logs, total, actions, entityTypes, organizations] = await Promise.all([
@@ -65,7 +86,7 @@ export const load: PageServerLoad = async ({ url }) => {
     total,
     page,
     totalPages: Math.ceil(total / limit),
-    filters: { action, userId, orgId, entityType },
+    filters: { action, userId, orgId, entityType, search, dateFrom, dateTo },
     filterOptions: {
       actions: actions.map(a => a.action),
       entityTypes: entityTypes.map(e => e.entityType).filter(Boolean) as string[],

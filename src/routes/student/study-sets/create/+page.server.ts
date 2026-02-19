@@ -1,5 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -8,7 +9,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-  default: async ({ request, locals }) => {
+  default: async (event) => {
+    const { request, locals } = event;
     const formData = await request.formData();
     const title = formData.get('title')?.toString().trim();
     const description = formData.get('description')?.toString().trim();
@@ -50,6 +52,8 @@ export const actions: Actions = {
         }
       }
     });
+
+    logAudit({ userId: locals.user!.id, action: 'STUDY_SET_CREATED', entityType: 'StudySet', entityId: studySet.id, details: { title, cardCount: cards.length }, ...getRequestInfo(event) });
 
     throw redirect(302, `/student/study-sets/${studySet.id}`);
   }

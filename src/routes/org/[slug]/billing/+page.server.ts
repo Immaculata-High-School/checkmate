@@ -1,5 +1,6 @@
 import { prisma } from '$lib/server/db';
 import { error, fail } from '@sveltejs/kit';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { PageServerLoad, Actions } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -60,7 +61,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
-  redeemVoucher: async ({ params, request, locals }) => {
+  redeemVoucher: async (event) => {
+    const { params, request, locals } = event;
     if (!locals.user) {
       return fail(401, { error: 'Unauthorized' });
     }
@@ -166,6 +168,8 @@ export const actions: Actions = {
         data: { usedCount: { increment: 1 } }
       })
     ]);
+
+    logAudit({ userId: locals.user!.id, organizationId: organization.id, action: 'VOUCHER_REDEEMED', entityType: 'Voucher', entityId: voucher.id, details: { code: voucher.code, amount: voucher.amount, orgSlug: params.slug }, ...getRequestInfo(event) });
 
     return { success: true, amount: voucher.amount };
   }

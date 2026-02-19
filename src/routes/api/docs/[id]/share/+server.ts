@@ -1,9 +1,11 @@
 import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { RequestHandler } from './$types';
 
 // POST /api/docs/[id]/share - Share document with users
-export const POST: RequestHandler = async ({ params, request, locals }) => {
+export const POST: RequestHandler = async (event) => {
+  const { params, request, locals } = event;
   if (!locals.user) {
     throw error(401, 'Not authenticated');
   }
@@ -65,11 +67,14 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
     }
   });
 
+  logAudit({ userId: locals.user.id, action: 'DOCUMENT_SHARED', entityType: 'Document', entityId: params.id, details: { targetUserId, canEdit }, ...getRequestInfo(event) });
+
   return json({ share }, { status: 201 });
 };
 
 // DELETE /api/docs/[id]/share - Remove user share
-export const DELETE: RequestHandler = async ({ params, request, locals }) => {
+export const DELETE: RequestHandler = async (event) => {
+  const { params, request, locals } = event;
   if (!locals.user) {
     throw error(401, 'Not authenticated');
   }
@@ -100,6 +105,8 @@ export const DELETE: RequestHandler = async ({ params, request, locals }) => {
       userId
     }
   });
+
+  logAudit({ userId: locals.user.id, action: 'DOCUMENT_UNSHARED', entityType: 'Document', entityId: params.id, details: { removedUserId: userId }, ...getRequestInfo(event) });
 
   return json({ success: true });
 };

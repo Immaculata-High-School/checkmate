@@ -1,5 +1,6 @@
 import { prisma } from '$lib/server/db';
 import { json } from '@sveltejs/kit';
+import { logAudit } from '$lib/server/audit';
 import type { RequestHandler } from './$types';
 
 // This endpoint is called to charge monthly user fees and AI usage for all organizations
@@ -167,6 +168,8 @@ export const POST: RequestHandler = async ({ request }) => {
         results.errors.push(`Failed to process org ${org.id} (${org.name}): ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
+
+    logAudit({ action: 'SYSTEM_MONTHLY_BILLING', entityType: 'Billing', details: { processed: results.processed, charged: results.charged, totalAmount: results.totalAmount, disabled: results.disabled } });
 
     return json({
       success: true,

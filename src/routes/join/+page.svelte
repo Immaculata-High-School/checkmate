@@ -125,6 +125,7 @@
           <input type="hidden" name="isNewUser" value={isNewUser.toString()} />
 
           {#if isNewUser}
+            <p class="text-sm text-gray-500 mb-4">Please fill in all information as it appears on your student ID.</p>
             <div class="grid grid-cols-2 gap-4">
               <div class="form-group">
                 <label for="firstName" class="label">First Name</label>

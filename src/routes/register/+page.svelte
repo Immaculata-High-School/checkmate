@@ -1,11 +1,13 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
-  import { Building2, User, Mail, Phone, MapPin, CheckCircle } from 'lucide-svelte';
+  import { Building2, User, Mail, Phone, MapPin, CheckCircle, GraduationCap, BookOpen, Shield } from 'lucide-svelte';
   import ChessKing from '$lib/components/ChessKing.svelte';
   import type { ActionData } from './$types';
 
   let { form }: { form: ActionData } = $props();
   let loading = $state(false);
+  let roleSelected = $state(false);
+  let selectedRole = $state<'student' | 'teacher' | 'admin' | null>(null);
 </script>
 
 <div class="min-h-screen bg-gray-50 py-12 px-4">
@@ -18,11 +20,108 @@
         </div>
         <span class="text-xl font-bold text-gray-900">Checkmate</span>
       </a>
-      <h1 class="text-2xl font-bold text-gray-900">Request School Access</h1>
-      <p class="text-gray-600 mt-2">Fill out this form and we'll set up your school account.</p>
+      {#if !roleSelected}
+        <h1 class="text-2xl font-bold text-gray-900">Who are you?</h1>
+        <p class="text-gray-600 mt-2">Select your role to continue.</p>
+      {:else}
+        <h1 class="text-2xl font-bold text-gray-900">Request School Access</h1>
+        <p class="text-gray-600 mt-2">For school administrators and teachers only. If you're a student, ask your teacher for a class code to join.</p>
+      {/if}
     </div>
 
-    {#if form?.success}
+    {#if !roleSelected}
+      <!-- Role Selection -->
+      <div class="grid gap-4">
+        <!-- Student -->
+        <button
+          type="button"
+          onclick={() => { selectedRole = 'student'; }}
+          class="card p-6 text-left hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
+        >
+          <div class="flex items-center gap-4">
+            <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <GraduationCap class="w-6 h-6 text-blue-600" />
+            </div>
+            <div>
+              <h3 class="font-semibold text-gray-900">I'm a Student</h3>
+              <p class="text-sm text-gray-500">I need to join my teacher's class</p>
+            </div>
+          </div>
+        </button>
+
+        <!-- Teacher -->
+        <button
+          type="button"
+          onclick={() => { selectedRole = 'teacher'; }}
+          class="card p-6 text-left hover:border-green-300 hover:shadow-md transition-all cursor-pointer"
+        >
+          <div class="flex items-center gap-4">
+            <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <BookOpen class="w-6 h-6 text-green-600" />
+            </div>
+            <div>
+              <h3 class="font-semibold text-gray-900">I'm a Teacher</h3>
+              <p class="text-sm text-gray-500">I want to set up classes for my students</p>
+            </div>
+          </div>
+        </button>
+
+        <!-- Admin -->
+        <button
+          type="button"
+          onclick={() => { roleSelected = true; }}
+          class="card p-6 text-left hover:border-purple-300 hover:shadow-md transition-all cursor-pointer"
+        >
+          <div class="flex items-center gap-4">
+            <div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <Shield class="w-6 h-6 text-purple-600" />
+            </div>
+            <div>
+              <h3 class="font-semibold text-gray-900">I'm a School Admin</h3>
+              <p class="text-sm text-gray-500">I want to register my school or organization</p>
+            </div>
+          </div>
+        </button>
+      </div>
+
+      <!-- Redirect modals for student/teacher -->
+      {#if selectedRole === 'student'}
+        <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 text-center">
+            <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <GraduationCap class="w-7 h-7 text-blue-600" />
+            </div>
+            <h2 class="text-lg font-bold text-gray-900 mb-2">Students don't register here!</h2>
+            <p class="text-gray-600 text-sm mb-6">
+              Ask your teacher for a <strong>class code</strong>, then use it to join your class and create your account.
+            </p>
+            <div class="flex flex-col gap-3">
+              <a href="/join" class="btn btn-primary w-full">Join with Class Code</a>
+              <button type="button" onclick={() => { selectedRole = null; }} class="btn btn-secondary w-full">Go Back</button>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      {#if selectedRole === 'teacher'}
+        <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 text-center">
+            <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <BookOpen class="w-7 h-7 text-green-600" />
+            </div>
+            <h2 class="text-lg font-bold text-gray-900 mb-2">Teachers are added by admins</h2>
+            <p class="text-gray-600 text-sm mb-6">
+              Your school admin needs to register the school first, then they can add you as a teacher. Contact your school's IT administrator to get started.
+            </p>
+            <div class="flex flex-col gap-3">
+              <a href="/login" class="btn btn-primary w-full">Sign In (if already added)</a>
+              <button type="button" onclick={() => { selectedRole = null; }} class="btn btn-secondary w-full">Go Back</button>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+    {:else if form?.success}
       <div class="card p-8 text-center">
         <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <CheckCircle class="w-8 h-8 text-green-600" />

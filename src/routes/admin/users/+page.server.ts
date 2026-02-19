@@ -1,6 +1,7 @@
 import { prisma } from '$lib/server/db';
 import { fail, redirect } from '@sveltejs/kit';
 import { lucia } from '$lib/server/auth';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import bcrypt from 'bcryptjs';
 import { generateCode } from '$lib/utils';
 import { sendPasswordReset } from '$lib/server/email';
@@ -59,8 +60,8 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-  create: async ({ request }) => {
-    const formData = await request.formData();
+  create: async (event) => {
+    const formData = await event.request.formData();
     const email = formData.get('email')?.toString();
     const name = formData.get('name')?.toString();
     const platformRole = formData.get('platformRole')?.toString() as any || 'USER';
@@ -80,7 +81,7 @@ export const actions: Actions = {
     const tempPassword = generateCode(16);
     const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
-    await prisma.user.create({
+    const newUser = await prisma.user.create({
       data: {
         email,
         name,
@@ -89,6 +90,8 @@ export const actions: Actions = {
         emailVerified: true
       }
     });
+
+    logAudit({ userId: event.locals.user?.id, action: 'ADMIN_USER_CREATED', entityType: 'User', entityId: newUser.id, details: { email, name, platformRole }, ...getRequestInfo(event) });
 
     if (sendInvite) {
       // Create password reset token and send email
@@ -110,8 +113,8 @@ export const actions: Actions = {
     return { success: true, tempPassword };
   },
 
-  updateRole: async ({ request }) => {
-    const formData = await request.formData();
+  updateRole: async (event) => {
+    const formData = await event.request.formData();
     const userId = formData.get('userId')?.toString();
     const platformRole = formData.get('platformRole')?.toString() as any;
 
@@ -124,11 +127,13 @@ export const actions: Actions = {
       data: { platformRole }
     });
 
+    logAudit({ userId: event.locals.user?.id, action: 'ADMIN_ROLE_CHANGED', entityType: 'User', entityId: userId, details: { newRole: platformRole }, ...getRequestInfo(event) });
+
     return { success: true };
   },
 
-  toggleSuspend: async ({ request }) => {
-    const formData = await request.formData();
+  toggleSuspend: async (event) => {
+    const formData = await event.request.formData();
     const userId = formData.get('userId')?.toString();
 
     if (!userId) {
@@ -145,11 +150,13 @@ export const actions: Actions = {
       data: { suspended: !user.suspended }
     });
 
+    logAudit({ userId: event.locals.user?.id, action: user.suspended ? 'ADMIN_USER_UNSUSPENDED' : 'ADMIN_USER_SUSPENDED', entityType: 'User', entityId: userId, details: { email: user.email }, ...getRequestInfo(event) });
+
     return { success: true };
   },
 
-  resetPassword: async ({ request }) => {
-    const formData = await request.formData();
+  resetPassword: async (event) => {
+    const formData = await event.request.formData();
     const userId = formData.get('userId')?.toString();
     const sendResetEmail = formData.get('sendEmail') === 'true';
 
@@ -176,6 +183,7 @@ export const actions: Actions = {
       });
 
       await sendPasswordReset(user.email, resetToken);
+      logAudit({ userId: event.locals.user?.id, action: 'ADMIN_PASSWORD_RESET_EMAIL', entityType: 'User', entityId: userId, details: { email: user.email }, ...getRequestInfo(event) });
       return { success: true, passwordReset: true, emailSent: true };
     }
 
@@ -188,24 +196,30 @@ export const actions: Actions = {
       data: { password: hashedPassword }
     });
 
+    logAudit({ userId: event.locals.user?.id, action: 'ADMIN_PASSWORD_RESET_MANUAL', entityType: 'User', entityId: userId, details: { email: user.email }, ...getRequestInfo(event) });
+
     return { success: true, tempPassword };
   },
 
-  delete: async ({ request }) => {
-    const formData = await request.formData();
+  delete: async (event) => {
+    const formData = await event.request.formData();
     const userId = formData.get('userId')?.toString();
 
     if (!userId) {
       return fail(400, { error: 'User ID required' });
     }
 
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
+    logAudit({ userId: event.locals.user?.id, action: 'ADMIN_USER_DELETED', entityType: 'User', entityId: userId, details: { email: user?.email, name: user?.name }, ...getRequestInfo(event) });
+
     await prisma.user.delete({ where: { id: userId } });
 
     return { success: true };
   },
 
-  impersonate: async ({ request, cookies, locals }) => {
-    const formData = await request.formData();
+  impersonate: async (event) => {
+    const { cookies, locals } = event;
+    const formData = await event.request.formData();
     const userId = formData.get('userId')?.toString();
 
     if (!userId) {
@@ -241,6 +255,8 @@ export const actions: Actions = {
       path: '.',
       ...sessionCookie.attributes
     });
+
+    logAudit({ userId: locals.user?.id, action: 'ADMIN_IMPERSONATE', entityType: 'User', entityId: userId, details: { targetEmail: targetUser.email, targetName: targetUser.name }, ...getRequestInfo(event) });
 
     throw redirect(302, '/dashboard');
   }

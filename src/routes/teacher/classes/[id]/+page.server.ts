@@ -1,6 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
 import * as powerSchool from '$lib/server/powerschool';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -114,7 +115,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
-  update: async ({ params, request, locals }) => {
+  update: async (event) => {
+    const { params, request, locals } = event;
     const formData = await request.formData();
     const name = formData.get('name')?.toString().trim();
     const description = formData.get('description')?.toString().trim();
@@ -136,10 +138,13 @@ export const actions: Actions = {
       data: { name, description }
     });
 
+    logAudit({ userId: locals.user!.id, action: 'CLASS_UPDATED', entityType: 'Class', entityId: params.id, details: { name }, ...getRequestInfo(event) });
+
     return { success: true };
   },
 
-  archive: async ({ params, locals }) => {
+  archive: async (event) => {
+    const { params, locals } = event;
     const cls = await prisma.class.findUnique({
       where: { id: params.id }
     });
@@ -153,10 +158,13 @@ export const actions: Actions = {
       data: { archived: true }
     });
 
+    logAudit({ userId: locals.user!.id, action: 'CLASS_ARCHIVED', entityType: 'Class', entityId: params.id, ...getRequestInfo(event) });
+
     throw redirect(302, '/teacher/classes');
   },
 
-  unarchive: async ({ params, locals }) => {
+  unarchive: async (event) => {
+    const { params, locals } = event;
     const cls = await prisma.class.findUnique({
       where: { id: params.id }
     });
@@ -170,10 +178,13 @@ export const actions: Actions = {
       data: { archived: false }
     });
 
+    logAudit({ userId: locals.user!.id, action: 'CLASS_UNARCHIVED', entityType: 'Class', entityId: params.id, ...getRequestInfo(event) });
+
     return { success: true };
   },
 
-  removeStudent: async ({ params, request, locals }) => {
+  removeStudent: async (event) => {
+    const { params, request, locals } = event;
     const formData = await request.formData();
     const studentId = formData.get('studentId')?.toString();
 
@@ -198,10 +209,13 @@ export const actions: Actions = {
       }
     });
 
+    logAudit({ userId: locals.user!.id, action: 'STUDENT_REMOVED', entityType: 'Class', entityId: params.id, details: { studentId }, ...getRequestInfo(event) });
+
     return { success: true };
   },
 
-  delete: async ({ params, locals }) => {
+  delete: async (event) => {
+    const { params, locals } = event;
     const cls = await prisma.class.findUnique({
       where: { id: params.id }
     });
@@ -214,10 +228,13 @@ export const actions: Actions = {
       where: { id: params.id }
     });
 
+    logAudit({ userId: locals.user!.id, action: 'CLASS_DELETED', entityType: 'Class', entityId: params.id, ...getRequestInfo(event) });
+
     throw redirect(302, '/teacher/classes');
   },
 
-  syncRoster: async ({ params, request, locals }) => {
+  syncRoster: async (event) => {
+    const { params, request, locals } = event;
     const formData = await request.formData();
     const mappingsJson = formData.get('mappings')?.toString();
 
@@ -257,6 +274,8 @@ export const actions: Actions = {
           }))
         });
       }
+
+      logAudit({ userId: locals.user!.id, action: 'POWERSCHOOL_ROSTER_SYNCED', entityType: 'Class', entityId: params.id, details: { mappingCount: mappings.length }, ...getRequestInfo(event) });
 
       return { 
         syncSuccess: true, 

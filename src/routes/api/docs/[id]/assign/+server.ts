@@ -1,9 +1,11 @@
 import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { RequestHandler } from './$types';
 
 // POST /api/docs/[id]/assign - Assign document to a class
-export const POST: RequestHandler = async ({ params, request, locals }) => {
+export const POST: RequestHandler = async (event) => {
+  const { params, request, locals } = event;
   if (!locals.user) {
     throw error(401, 'Not authenticated');
   }
@@ -109,6 +111,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
     }
   });
 
+  logAudit({ userId: locals.user.id, action: 'DOCUMENT_ASSIGNED', entityType: 'Document', entityId: params.id, details: { classId, type, title: title || document.title }, ...getRequestInfo(event) });
+
   return json({ assignment: fullAssignment }, { status: 201 });
 };
 
@@ -149,7 +153,8 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 };
 
 // DELETE /api/docs/[id]/assign - Remove an assignment
-export const DELETE: RequestHandler = async ({ params, request, locals }) => {
+export const DELETE: RequestHandler = async (event) => {
+  const { params, request, locals } = event;
   if (!locals.user) {
     throw error(401, 'Not authenticated');
   }
@@ -187,6 +192,8 @@ export const DELETE: RequestHandler = async ({ params, request, locals }) => {
       classId: assignment.classId
     }
   });
+
+  logAudit({ userId: locals.user.id, action: 'DOCUMENT_UNASSIGNED', entityType: 'Document', entityId: params.id, details: { assignmentId, classId: assignment.classId }, ...getRequestInfo(event) });
 
   return json({ success: true });
 };

@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { lucia, invalidateUserOrgCache } from '$lib/server/auth';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import bcrypt from 'bcryptjs';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -79,7 +80,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
-  accept: async ({ params, cookies, locals }) => {
+  accept: async (event) => {
+    const { params, cookies, locals } = event;
     const { token } = params;
 
     const invite = await prisma.organizationInvite.findUnique({
@@ -130,10 +132,13 @@ export const actions: Actions = {
       where: { id: invite.id }
     });
 
+    logAudit({ userId: locals.user.id, action: 'INVITE_ACCEPTED', entityType: 'Organization', entityId: invite.organizationId, organizationId: invite.organizationId, details: { role: invite.role, orgName: invite.organization.name }, ...getRequestInfo(event) });
+
     throw redirect(302, '/dashboard');
   },
 
-  register: async ({ request, params, cookies }) => {
+  register: async (event) => {
+    const { request, params, cookies } = event;
     const { token } = params;
     const formData = await request.formData();
 
@@ -200,6 +205,8 @@ export const actions: Actions = {
       path: '.',
       ...sessionCookie.attributes
     });
+
+    logAudit({ userId: user.id, action: 'INVITE_REGISTERED', entityType: 'Organization', entityId: invite.organizationId, organizationId: invite.organizationId, details: { role: invite.role, orgName: invite.organization.name, email: invite.email }, ...getRequestInfo(event) });
 
     throw redirect(302, '/dashboard');
   }

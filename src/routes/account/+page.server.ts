@@ -1,5 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import bcrypt from 'bcryptjs';
 import { sendEmailVerification } from '$lib/server/email';
 import { generateCode } from '$lib/utils';
@@ -43,12 +44,12 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-  updateProfile: async ({ request, locals }) => {
-    if (!locals.user) {
+  updateProfile: async (event) => {
+    if (!event.locals.user) {
       return fail(401, { error: 'Not authenticated' });
     }
 
-    const formData = await request.formData();
+    const formData = await event.request.formData();
     const name = formData.get('name')?.toString().trim();
     const timezone = formData.get('timezone')?.toString() || 'America/New_York';
     const locale = formData.get('locale')?.toString() || 'en-US';
@@ -59,7 +60,7 @@ export const actions: Actions = {
     }
 
     await prisma.user.update({
-      where: { id: locals.user.id },
+      where: { id: event.locals.user.id },
       data: {
         name,
         timezone,
@@ -68,15 +69,17 @@ export const actions: Actions = {
       }
     });
 
+    logAudit({ userId: event.locals.user.id, action: 'PROFILE_UPDATED', entityType: 'User', entityId: event.locals.user.id, details: { name }, ...getRequestInfo(event) });
+
     return { profileSuccess: true };
   },
 
-  updateEmail: async ({ request, locals }) => {
-    if (!locals.user) {
+  updateEmail: async (event) => {
+    if (!event.locals.user) {
       return fail(401, { error: 'Not authenticated' });
     }
 
-    const formData = await request.formData();
+    const formData = await event.request.formData();
     const newEmail = formData.get('newEmail')?.toString().toLowerCase().trim();
     const password = formData.get('password')?.toString();
 
@@ -86,7 +89,7 @@ export const actions: Actions = {
 
     // Verify password
     const user = await prisma.user.findUnique({
-      where: { id: locals.user.id }
+      where: { id: event.locals.user.id }
     });
 
     if (!user?.password) {
@@ -103,7 +106,7 @@ export const actions: Actions = {
       where: { email: newEmail }
     });
 
-    if (existingUser && existingUser.id !== locals.user.id) {
+    if (existingUser && existingUser.id !== event.locals.user.id) {
       return fail(400, { emailError: 'Email is already in use' });
     }
 
@@ -131,22 +134,24 @@ export const actions: Actions = {
 
     // Update email (mark as unverified until they verify)
     await prisma.user.update({
-      where: { id: locals.user.id },
+      where: { id: event.locals.user.id },
       data: {
         email: newEmail,
         emailVerified: false
       }
     });
 
+    logAudit({ userId: event.locals.user.id, action: 'EMAIL_CHANGED', entityType: 'User', entityId: event.locals.user.id, details: { newEmail }, ...getRequestInfo(event) });
+
     return { emailSuccess: true, message: 'Verification email sent to your new address' };
   },
 
-  updatePassword: async ({ request, locals }) => {
-    if (!locals.user) {
+  updatePassword: async (event) => {
+    if (!event.locals.user) {
       return fail(401, { error: 'Not authenticated' });
     }
 
-    const formData = await request.formData();
+    const formData = await event.request.formData();
     const currentPassword = formData.get('currentPassword')?.toString();
     const newPassword = formData.get('newPassword')?.toString();
     const confirmPassword = formData.get('confirmPassword')?.toString();
@@ -164,7 +169,7 @@ export const actions: Actions = {
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: locals.user.id }
+      where: { id: event.locals.user.id }
     });
 
     if (!user?.password) {
@@ -178,19 +183,21 @@ export const actions: Actions = {
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({
-      where: { id: locals.user.id },
+      where: { id: event.locals.user.id },
       data: { password: hashedPassword }
     });
+
+    logAudit({ userId: event.locals.user.id, action: 'PASSWORD_CHANGED', entityType: 'User', entityId: event.locals.user.id, ...getRequestInfo(event) });
 
     return { passwordSuccess: true };
   },
 
-  deleteAccount: async ({ request, locals, cookies }) => {
-    if (!locals.user) {
+  deleteAccount: async (event) => {
+    if (!event.locals.user) {
       return fail(401, { error: 'Not authenticated' });
     }
 
-    const formData = await request.formData();
+    const formData = await event.request.formData();
     const password = formData.get('password')?.toString();
     const confirmation = formData.get('confirmation')?.toString();
 
@@ -199,7 +206,7 @@ export const actions: Actions = {
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: locals.user.id }
+      where: { id: event.locals.user.id }
     });
 
     if (!user?.password) {
@@ -211,28 +218,30 @@ export const actions: Actions = {
       return fail(400, { deleteError: 'Incorrect password' });
     }
 
+    logAudit({ userId: event.locals.user.id, action: 'ACCOUNT_DELETED', entityType: 'User', entityId: event.locals.user.id, details: { email: user.email }, ...getRequestInfo(event) });
+
     // Delete all sessions
     await prisma.session.deleteMany({
-      where: { userId: locals.user.id }
+      where: { userId: event.locals.user.id }
     });
 
     // Delete user (cascade will handle related data)
     await prisma.user.delete({
-      where: { id: locals.user.id }
+      where: { id: event.locals.user.id }
     });
 
     // Clear session cookie
-    cookies.delete('auth_session', { path: '/' });
+    event.cookies.delete('auth_session', { path: '/' });
 
     throw redirect(302, '/');
   },
 
-  updateDashboardPin: async ({ request, locals }) => {
-    if (!locals.user) {
+  updateDashboardPin: async (event) => {
+    if (!event.locals.user) {
       return fail(401, { error: 'Not authenticated' });
     }
 
-    const formData = await request.formData();
+    const formData = await event.request.formData();
     const pin = formData.get('pin')?.toString();
     const enabled = formData.get('enabled') === 'true';
 
@@ -250,20 +259,22 @@ export const actions: Actions = {
     }
 
     await prisma.user.update({
-      where: { id: locals.user.id },
+      where: { id: event.locals.user.id },
       data
     });
+
+    logAudit({ userId: event.locals.user.id, action: 'DASHBOARD_PIN_UPDATED', entityType: 'User', entityId: event.locals.user.id, details: { enabled }, ...getRequestInfo(event) });
 
     return { pinSuccess: true };
   },
 
-  resendVerification: async ({ locals }) => {
-    if (!locals.user) {
+  resendVerification: async (event) => {
+    if (!event.locals.user) {
       return fail(401, { error: 'Not authenticated' });
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: locals.user.id }
+      where: { id: event.locals.user.id }
     });
 
     if (!user) {

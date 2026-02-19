@@ -1,5 +1,6 @@
 import { error, fail } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 async function requireOrgAdmin(slug: string, userId: string) {
@@ -33,7 +34,8 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions: Actions = {
-  updateOrganization: async ({ request, params, locals }) => {
+  updateOrganization: async (event) => {
+    const { request, params, locals } = event;
     if (!locals.user) throw error(401, 'Not authenticated');
     await requireOrgAdmin(params.slug, locals.user.id);
 
@@ -75,10 +77,13 @@ export const actions: Actions = {
       }
     });
 
+    logAudit({ userId: locals.user.id, action: 'ORG_SETTINGS_UPDATED', entityType: 'Organization', entityId: organization.id, details: { name, orgSlug: params.slug }, ...getRequestInfo(event) });
+
     return { success: true, message: 'Organization settings updated' };
   },
 
-  updateBranding: async ({ request, params, locals }) => {
+  updateBranding: async (event) => {
+    const { request, params, locals } = event;
     if (!locals.user) throw error(401, 'Not authenticated');
     await requireOrgAdmin(params.slug, locals.user.id);
 
@@ -104,10 +109,13 @@ export const actions: Actions = {
       }
     });
 
+    logAudit({ userId: locals.user.id, action: 'ORG_BRANDING_UPDATED', entityType: 'Organization', entityId: organization.id, details: { orgSlug: params.slug }, ...getRequestInfo(event) });
+
     return { brandingSuccess: true, message: 'Branding settings updated' };
   },
 
-  createDepartment: async ({ request, params, locals }) => {
+  createDepartment: async (event) => {
+    const { request, params, locals } = event;
     if (!locals.user) throw error(401, 'Not authenticated');
     await requireOrgAdmin(params.slug, locals.user.id);
 
@@ -133,10 +141,13 @@ export const actions: Actions = {
       }
     });
 
+    logAudit({ userId: locals.user.id, action: 'ORG_DEPARTMENT_CREATED', entityType: 'Department', details: { name, orgSlug: params.slug }, ...getRequestInfo(event) });
+
     return { deptSuccess: true };
   },
 
-  deleteDepartment: async ({ request, params, locals }) => {
+  deleteDepartment: async (event) => {
+    const { request, params, locals } = event;
     if (!locals.user) throw error(401, 'Not authenticated');
     await requireOrgAdmin(params.slug, locals.user.id);
 
@@ -150,6 +161,8 @@ export const actions: Actions = {
     await prisma.department.delete({
       where: { id: departmentId }
     });
+
+    logAudit({ userId: locals.user.id, action: 'ORG_DEPARTMENT_DELETED', entityType: 'Department', entityId: departmentId, details: { orgSlug: params.slug }, ...getRequestInfo(event) });
 
     return { deptSuccess: true };
   }

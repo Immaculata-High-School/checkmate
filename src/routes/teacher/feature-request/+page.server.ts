@@ -1,5 +1,6 @@
 import { prisma } from '$lib/server/db';
 import { fail } from '@sveltejs/kit';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -36,7 +37,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-  submit: async ({ request, locals }) => {
+  submit: async (event) => {
+    const { request, locals } = event;
     if (!locals.user) {
       return fail(401, { error: 'Unauthorized' });
     }
@@ -86,6 +88,8 @@ export const actions: Actions = {
         userRole: membership?.role || 'TEACHER'
       }
     });
+
+    logAudit({ userId: locals.user.id, action: 'FEATURE_REQUEST_SUBMITTED', entityType: 'FeatureRequest', details: { title, category, priority }, ...getRequestInfo(event) });
 
     return { success: true };
   }

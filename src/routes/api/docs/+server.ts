@@ -1,5 +1,6 @@
 import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { RequestHandler } from './$types';
 
 // GET /api/docs - List all documents for current user
@@ -90,7 +91,8 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 };
 
 // POST /api/docs - Create a new document
-export const POST: RequestHandler = async ({ request, locals }) => {
+export const POST: RequestHandler = async (event) => {
+  const { request, locals } = event;
   if (!locals.user) {
     throw error(401, 'Not authenticated');
   }
@@ -116,6 +118,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
       }
     }
   });
+
+  logAudit({ userId: locals.user.id, organizationId: membership?.organizationId, action: 'DOCUMENT_CREATED', entityType: 'Document', entityId: document.id, details: { title }, ...getRequestInfo(event) });
 
   return json({ document }, { status: 201 });
 };

@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
 import { generateCode } from '$lib/utils';
 import { sendPasswordReset } from '$lib/server/email';
+import { logAudit, getRequestInfo } from '$lib/server/audit';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -12,8 +13,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-  default: async ({ request }) => {
-    const formData = await request.formData();
+  default: async (event) => {
+    const formData = await event.request.formData();
     const email = formData.get('email')?.toString()?.toLowerCase().trim();
 
     if (!email) {
@@ -50,6 +51,8 @@ export const actions: Actions = {
 
     // Send email
     await sendPasswordReset(email, token);
+
+    logAudit({ userId: user.id, action: 'PASSWORD_RESET_REQUESTED', details: { email }, ...getRequestInfo(event) });
 
     return { success: true };
   }
