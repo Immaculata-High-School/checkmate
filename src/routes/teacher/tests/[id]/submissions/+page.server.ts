@@ -1,7 +1,6 @@
 import { error, fail } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
-import { shuttleAI } from '$lib/server/shuttleai';
-import { canMakeRequest, recordRequest, getRateLimitStatus } from '$lib/server/rateLimiter';
+import { queueGrading, getTestGradingQueue, setRegradeInstructions } from '$lib/server/rateLimiter';
 import * as powerSchool from '$lib/server/powerschool';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -122,6 +121,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
       releasedToPowerSchool
     },
     filters: { status, search },
+    gradingQueue: await getTestGradingQueue(params.id),
     powerSchool: {
       configured: powerSchool.getConfig().isConfigured,
       connected: psConnected,
@@ -202,20 +202,10 @@ export const actions: Actions = {
       return fail(400, { error: 'Submission ID required' });
     }
 
-    // Check rate limit
-    if (!canMakeRequest()) {
-      const status = getRateLimitStatus();
-      const waitTime = status.nextSlotAvailableIn ? Math.ceil(status.nextSlotAvailableIn / 1000) : 60;
-      return fail(429, { error: `Rate limited. Please try again in ${waitTime} seconds.` });
-    }
-
     const submission = await prisma.testSubmission.findUnique({
       where: { id: submissionId },
       include: {
         test: true,
-        answers: {
-          include: { question: true }
-        },
         student: true
       }
     });
@@ -228,106 +218,15 @@ export const actions: Actions = {
       return fail(403, { error: 'Not authorized' });
     }
 
-    // Get org membership for AI tracking
-    const membership = await prisma.organizationMember.findFirst({
-      where: { userId: locals.user!.id }
+    // Queue the submission for grading (processed sequentially with retries)
+    await queueGrading({
+      submissionId: submission.id,
+      testId: submission.testId,
+      studentId: submission.studentId,
+      priority: 2 // Higher priority for teacher-initiated grading
     });
 
-    // Create AI job for tracking
-    const job = await prisma.aIJob.create({
-      data: {
-        type: 'TEST_GRADING',
-        status: 'RUNNING',
-        input: {
-          testTitle: submission.test.title,
-          submissionId: submission.id,
-          studentId: submission.studentId,
-          studentName: submission.student.name,
-          questionCount: submission.answers.length
-        },
-        entityId: submission.test.id,
-        entityType: 'TEST',
-        userId: locals.user!.id,
-        orgId: membership?.organizationId,
-        startedAt: new Date()
-      }
-    });
-
-    // Record this request for rate limiting
-    recordRequest();
-
-    try {
-      // Use AI to grade the entire test with test-specific settings
-      const result = await shuttleAI.gradeTestComprehensive({
-        testTitle: submission.test.title,
-        answers: submission.answers.map(a => ({
-          id: a.id,
-          question: a.question.question,
-          correctAnswer: a.question.correctAnswer || '',
-          studentAnswer: a.answer || '',
-          questionType: a.question.type,
-          points: a.question.points
-        })),
-        allowPartialCredit: (submission.test as any).aiPartialCredit ?? true,
-        gradingHarshness: (submission.test as any).aiGradingHarshness ?? 50
-      }, { userId: locals.user!.id, orgId: membership?.organizationId });
-
-      // Update each answer with AI grading
-      for (const gradedAnswer of result.gradedAnswers) {
-        await prisma.answer.update({
-          where: { id: gradedAnswer.id },
-          data: {
-            pointsAwarded: gradedAnswer.pointsAwarded,
-            isCorrect: gradedAnswer.isCorrect,
-            feedback: gradedAnswer.feedback
-          }
-        });
-      }
-
-      // Update submission with total score
-      await prisma.testSubmission.update({
-        where: { id: submissionId },
-        data: {
-          status: 'GRADED',
-          score: result.totalScore,
-          totalPoints: result.totalPoints,
-          feedback: result.overallFeedback,
-          gradedAt: new Date()
-        }
-      });
-
-      // Update job as completed
-      await prisma.aIJob.update({
-        where: { id: job.id },
-        data: {
-          status: 'COMPLETED',
-          progress: 100,
-          output: {
-            totalScore: result.totalScore,
-            totalPoints: result.totalPoints,
-            gradedAnswersCount: result.gradedAnswers.length,
-            overallFeedback: result.overallFeedback
-          },
-          completedAt: new Date()
-        }
-      });
-
-      return { aiSuccess: true, message: 'AI grading completed successfully' };
-    } catch (err) {
-      console.error('AI grading error:', err);
-      
-      // Update job as failed
-      await prisma.aIJob.update({
-        where: { id: job.id },
-        data: {
-          status: 'FAILED',
-          error: err instanceof Error ? err.message : 'AI grading failed',
-          completedAt: new Date()
-        }
-      });
-      
-      return fail(500, { error: 'AI grading failed. Please try manual grading.' });
-    }
+    return { aiQueued: true, message: 'Submission queued for AI grading.' };
   },
 
   aiGradeAll: async ({ params, locals }) => {
@@ -344,11 +243,6 @@ export const actions: Actions = {
       where: {
         testId: params.id,
         status: { in: ['SUBMITTED', 'PENDING'] }
-      },
-      include: {
-        answers: {
-          include: { question: true }
-        }
       }
     });
 
@@ -356,95 +250,100 @@ export const actions: Actions = {
       return fail(400, { error: 'No submissions pending grading' });
     }
 
-    // Get org membership for AI tracking
-    const membership = await prisma.organizationMember.findFirst({
-      where: { userId: locals.user!.id }
-    });
-
-    let successCount = 0;
-    let errorCount = 0;
-    let rateLimitedCount = 0;
-
+    // Queue all submissions for grading (processed sequentially with retries)
+    let queuedCount = 0;
     for (const submission of submissions) {
-      // Check rate limit before each submission
-      if (!canMakeRequest()) {
-        const status = getRateLimitStatus();
-        // If we hit rate limit, wait for next slot or skip remaining
-        if (status.nextSlotAvailableIn !== null && status.nextSlotAvailableIn < 10000) {
-          // Wait if less than 10 seconds
-          await new Promise(resolve => setTimeout(resolve, status.nextSlotAvailableIn! + 100));
-        } else {
-          // Skip remaining submissions if wait is too long
-          rateLimitedCount = submissions.length - successCount - errorCount;
-          break;
-        }
-      }
-
-      // Record this request (one per submission)
-      recordRequest();
-
-      try {
-        // Grade this submission - each call logs usage to AIUsageLog
-        const result = await shuttleAI.gradeTestComprehensive({
-          testTitle: test.title,
-          answers: submission.answers.map(a => ({
-            id: a.id,
-            question: a.question.question,
-            correctAnswer: a.question.correctAnswer || '',
-            studentAnswer: a.answer || '',
-            questionType: a.question.type,
-            points: a.question.points
-          })),
-          allowPartialCredit: (test as any).aiPartialCredit ?? true,
-          gradingHarshness: (test as any).aiGradingHarshness ?? 50
-        }, { userId: locals.user!.id, orgId: membership?.organizationId });
-
-        // Update each answer with AI grading
-        for (const gradedAnswer of result.gradedAnswers) {
-          await prisma.answer.update({
-            where: { id: gradedAnswer.id },
-            data: {
-              pointsAwarded: gradedAnswer.pointsAwarded,
-              isCorrect: gradedAnswer.isCorrect,
-              feedback: gradedAnswer.feedback
-            }
-          });
-        }
-
-        // Update submission with total score
-        await prisma.testSubmission.update({
-          where: { id: submission.id },
-          data: {
-            status: 'GRADED',
-            score: result.totalScore,
-            totalPoints: result.totalPoints,
-            feedback: result.overallFeedback,
-            gradedAt: new Date()
-          }
-        });
-
-        successCount++;
-      } catch (err) {
-        console.error(`Failed to grade submission ${submission.id}:`, err);
-        errorCount++;
-      }
-    }
-
-    // Build response message
-    let message = `Successfully graded ${successCount} submission${successCount !== 1 ? 's' : ''} with AI`;
-    if (errorCount > 0) {
-      message = `Graded ${successCount} submissions. ${errorCount} failed.`;
-    }
-    if (rateLimitedCount > 0) {
-      message += ` ${rateLimitedCount} remaining due to rate limit - please try again in a minute.`;
+      await queueGrading({
+        submissionId: submission.id,
+        testId: submission.testId,
+        studentId: submission.studentId,
+        priority: 1
+      });
+      queuedCount++;
     }
 
     return { 
-      aiSuccess: true, 
-      message,
-      successCount,
-      errorCount,
-      rateLimitedCount
+      aiQueued: true, 
+      message: `Queued ${queuedCount} submission${queuedCount !== 1 ? 's' : ''} for AI grading. Results will appear as each is completed.`
+    };
+  },
+
+  regradeAll: async ({ request, params, locals }) => {
+    const formData = await request.formData();
+    const extraInstructions = formData.get('extraInstructions')?.toString() || '';
+
+    const test = await prisma.test.findUnique({
+      where: { id: params.id }
+    });
+
+    if (!test || test.teacherId !== locals.user!.id) {
+      return fail(403, { error: 'Not authorized' });
+    }
+
+    // Get all graded submissions to regrade them
+    const submissions = await prisma.testSubmission.findMany({
+      where: {
+        testId: params.id,
+        status: 'GRADED'
+      }
+    });
+
+    if (submissions.length === 0) {
+      return fail(400, { error: 'No graded submissions to regrade' });
+    }
+
+    // Store extra instructions for the queue processor to pick up
+    if (extraInstructions.trim()) {
+      setRegradeInstructions(params.id, extraInstructions.trim());
+    }
+
+    // Reset all graded submissions back to SUBMITTED so they can be regraded
+    await prisma.testSubmission.updateMany({
+      where: {
+        testId: params.id,
+        status: 'GRADED'
+      },
+      data: {
+        status: 'SUBMITTED',
+        score: null,
+        percentage: null,
+        feedback: null,
+        gradedAt: null
+      }
+    });
+
+    // Clear old answer grades
+    await prisma.answer.updateMany({
+      where: {
+        submission: { testId: params.id }
+      },
+      data: {
+        isCorrect: null,
+        pointsAwarded: null,
+        feedback: null
+      }
+    });
+
+    // Clean up any existing grading queue items for this test
+    await prisma.gradingQueue.deleteMany({
+      where: { testId: params.id }
+    });
+
+    // Queue all submissions for regrading
+    let queuedCount = 0;
+    for (const submission of submissions) {
+      await queueGrading({
+        submissionId: submission.id,
+        testId: submission.testId,
+        studentId: submission.studentId,
+        priority: 1
+      });
+      queuedCount++;
+    }
+
+    return {
+      aiQueued: true,
+      message: `Queued ${queuedCount} submission${queuedCount !== 1 ? 's' : ''} for regrading with updated instructions.`
     };
   },
 

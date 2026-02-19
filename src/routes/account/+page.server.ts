@@ -22,6 +22,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       birthdate: true,
       timezone: true,
       locale: true,
+      dashboardPinEnabled: true,
       createdAt: true,
       lastLoginAt: true,
       orgMemberships: {
@@ -224,6 +225,36 @@ export const actions: Actions = {
     cookies.delete('auth_session', { path: '/' });
 
     throw redirect(302, '/');
+  },
+
+  updateDashboardPin: async ({ request, locals }) => {
+    if (!locals.user) {
+      return fail(401, { error: 'Not authenticated' });
+    }
+
+    const formData = await request.formData();
+    const pin = formData.get('pin')?.toString();
+    const enabled = formData.get('enabled') === 'true';
+
+    if (enabled && (!pin || !/^\d{6}$/.test(pin))) {
+      return fail(400, { pinError: 'PIN must be exactly 6 digits' });
+    }
+
+    const data: any = { dashboardPinEnabled: enabled };
+    if (pin && enabled) {
+      data.dashboardPin = await bcrypt.hash(pin, 10);
+    }
+    if (!enabled) {
+      data.dashboardPin = null;
+      data.dashboardPinEnabled = false;
+    }
+
+    await prisma.user.update({
+      where: { id: locals.user.id },
+      data
+    });
+
+    return { pinSuccess: true };
   },
 
   resendVerification: async ({ locals }) => {

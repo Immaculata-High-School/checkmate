@@ -21,7 +21,8 @@ export const lucia = new Lucia(adapter, {
       avatarUrl: attributes.avatarUrl,
       platformRole: attributes.platformRole,
       suspended: attributes.suspended,
-      emailVerified: attributes.emailVerified
+      emailVerified: attributes.emailVerified,
+      dashboardPinEnabled: attributes.dashboardPinEnabled
     };
   }
 });
@@ -41,6 +42,7 @@ interface DatabaseUserAttributes {
   platformRole: PlatformRole;
   suspended: boolean;
   emailVerified: boolean;
+  dashboardPinEnabled: boolean;
 }
 
 export interface OrgMembership {

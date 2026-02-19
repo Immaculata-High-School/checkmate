@@ -1,6 +1,7 @@
 import { lucia, getUserOrgMemberships, getEffectiveRole } from '$lib/server/auth';
 import { startQueueProcessor } from '$lib/server/rateLimiter';
 import { cache } from '$lib/server/cache';
+import { prisma } from '$lib/server/db';
 import type { Handle } from '@sveltejs/kit';
 
 // Start the grading queue processor when the server starts (with error handling)
@@ -8,6 +9,34 @@ try {
   startQueueProcessor();
 } catch (error) {
   console.error('[Startup] Failed to start queue processor:', error);
+}
+
+// Background auto-unpublish check every 60 seconds
+let autoUnpublishInterval: ReturnType<typeof setInterval> | null = null;
+if (!autoUnpublishInterval) {
+  autoUnpublishInterval = setInterval(async () => {
+    try {
+      const now = new Date();
+      const result = await prisma.test.updateMany({
+        where: {
+          status: 'PUBLISHED',
+          OR: [
+            { autoUnpublishAt: { lte: now } },
+            { endDate: { lte: now } }
+          ]
+        },
+        data: {
+          status: 'ARCHIVED',
+          autoUnpublishAt: null
+        }
+      });
+      if (result.count > 0) {
+        console.log(`[Auto-Unpublish] Closed ${result.count} expired test(s)`);
+      }
+    } catch (err) {
+      // Silently ignore - will retry next interval
+    }
+  }, 60_000);
 }
 
 export const handle: Handle = async ({ event, resolve }) => {

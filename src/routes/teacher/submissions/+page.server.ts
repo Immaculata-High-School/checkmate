@@ -49,14 +49,20 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     }),
 
     // Get doc submissions if not filtering to tests only
+    // Default: show submitted & graded docs. Map test status filters to doc equivalents.
     type !== 'test' ? prisma.studentDocument.findMany({
       where: {
         assignment: {
           document: { ownerId: locals.user!.id }
         },
-        ...(status === 'GRADED' ? { grade: { not: null } } : {}),
-        ...(status === 'SUBMITTED' ? { status: 'SUBMITTED' } : {}),
-        ...(status === 'IN_PROGRESS' ? { status: 'IN_PROGRESS' } : {})
+        ...(status === 'GRADED' 
+          ? { grade: { not: null } } 
+          : status === 'SUBMITTED' || status === 'PENDING'
+            ? { status: { in: ['SUBMITTED', 'RESUBMITTED'] }, grade: null } 
+            : status === 'IN_PROGRESS' 
+              ? { status: 'IN_PROGRESS' } 
+              : { OR: [{ status: 'SUBMITTED' }, { status: 'RESUBMITTED' }, { grade: { not: null } }] }
+        )
       },
       include: {
         student: {

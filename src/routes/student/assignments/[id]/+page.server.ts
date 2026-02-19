@@ -45,6 +45,11 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     throw error(403, 'This test is not available');
   }
 
+  // Check if test has passed its end date
+  if (test.endDate && new Date(test.endDate) < new Date()) {
+    throw error(403, 'This test has closed and is no longer accepting submissions');
+  }
+
   // Get or create submission - find the latest in-progress or most recent submission
   let submission = await prisma.testSubmission.findFirst({
     where: {

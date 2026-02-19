@@ -29,7 +29,8 @@
     ExternalLink,
     Link,
     Save,
-    Calendar
+    Calendar,
+    RefreshCw
   } from 'lucide-svelte';
   import type { PageData, ActionData } from './$types';
 
@@ -37,6 +38,36 @@
 
   // Check if PowerSchool is enabled for the organization
   const powerSchoolEnabled = $derived($page.data.powerSchoolEnabled ?? true);
+
+  // Track grading queue status
+  let gradingQueue = $derived(data.gradingQueue || []);
+  let gradingInProgress = $derived(gradingQueue.length > 0);
+  let gradingSubmissionIds = $derived(new Set(gradingQueue.map((q: any) => q.submissionId)));
+
+  // Poll for updates when grading is in progress
+  let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+  $effect(() => {
+    if (gradingInProgress) {
+      if (!pollInterval) {
+        pollInterval = setInterval(() => {
+          invalidateAll();
+        }, 3000);
+      }
+    } else {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    }
+
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    };
+  });
 
   let aiGrading = $state(false);
   let aiGradingAll = $state(false);
@@ -47,6 +78,9 @@
   let showBulkDeleteConfirm = $state(false);
   let showClassFeedback = $state(false);
   let showBonusModal = $state(false);
+  let showRegradeModal = $state(false);
+  let regrading = $state(false);
+  let regradeInstructions = $state('');
   let showPowerSchoolModal = $state(false);
   let showPsJobStartedModal = $state(false);
   let showRosterSyncNeededModal = $state(false);
@@ -283,7 +317,7 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
-        {#if data.stats.pending > 0}
+        {#if data.stats.pending > 0 && !gradingInProgress}
           <form method="POST" action="?/aiGradeAll" use:enhance={() => {
             aiGradingAll = true;
             return async ({ result, update }) => {
@@ -292,19 +326,28 @@
               await invalidateAll();
             };
           }}>
-            <button type="submit" class="btn btn-secondary" disabled={aiGradingAll}>
+            <button type="submit" class="btn btn-secondary" disabled={aiGradingAll || gradingInProgress}>
               {#if aiGradingAll}
                 <Loader2 class="w-4 h-4 animate-spin" />
-                Grading...
+                Queuing...
               {:else}
                 <Sparkles class="w-4 h-4" />
                 AI Grade All ({data.stats.pending})
               {/if}
             </button>
           </form>
+        {:else if gradingInProgress}
+          <div class="btn btn-secondary opacity-75 cursor-not-allowed flex items-center gap-2">
+            <Loader2 class="w-4 h-4 animate-spin" />
+            Grading {gradingQueue.length}...
+          </div>
         {/if}
 
         {#if data.stats.graded > 0}
+          <button onclick={() => { showRegradeModal = true; regradeInstructions = ''; }} class="btn btn-secondary">
+            <RefreshCw class="w-4 h-4" />
+            Regrade All
+          </button>
           <button onclick={() => openBonusModal('all')} class="btn btn-secondary">
             <Gift class="w-4 h-4" />
             Bonus Points
@@ -372,10 +415,24 @@
     </div>
   {/if}
 
-  {#if form?.aiSuccess}
+  {#if form?.aiQueued}
     <div class="alert alert-success mb-6">
       <CheckCircle class="w-5 h-5" />
-      {form.message || 'AI grading completed successfully!'}
+      {form.message || 'Submissions queued for AI grading.'}
+    </div>
+  {/if}
+
+  {#if gradingInProgress}
+    <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6">
+      <div class="flex items-center gap-3">
+        <Loader2 class="w-5 h-5 text-indigo-600 animate-spin flex-shrink-0" />
+        <div>
+          <p class="font-medium text-indigo-900">AI Grading in Progress</p>
+          <p class="text-sm text-indigo-600">
+            {gradingQueue.length} submission{gradingQueue.length !== 1 ? 's' : ''} being graded. This page will update automatically.
+          </p>
+        </div>
+      </div>
     </div>
   {/if}
 
@@ -585,7 +642,14 @@
             </td>
             <td class="px-4 py-4 text-center">
               <div class="flex items-center justify-center gap-1">
-                <span class="badge {status.class}">{status.text}</span>
+                {#if gradingSubmissionIds.has(submission.id)}
+                  <span class="badge bg-indigo-100 text-indigo-700 border-indigo-200 flex items-center gap-1">
+                    <Loader2 class="w-3 h-3 animate-spin" />
+                    Grading
+                  </span>
+                {:else}
+                  <span class="badge {status.class}">{status.text}</span>
+                {/if}
                 {#if powerSchoolEnabled && (submission as any).powerSchoolRelease?.success}
                   <span title="Released to PowerSchool" class="text-blue-500">
                     <School class="w-4 h-4" />
@@ -595,7 +659,12 @@
             </td>
             <td class="px-4 py-4 text-right">
               <div class="flex items-center justify-end gap-2">
-                {#if submission.status === 'SUBMITTED' || submission.status === 'PENDING'}
+                {#if gradingSubmissionIds.has(submission.id)}
+                  <span class="text-sm text-indigo-500 flex items-center gap-1">
+                    <Loader2 class="w-4 h-4 animate-spin" />
+                    Grading...
+                  </span>
+                {:else if submission.status === 'SUBMITTED' || submission.status === 'PENDING'}
                   <form method="POST" action="?/aiGrade" use:enhance={() => {
                     aiGrading = true;
                     return async ({ update }) => {
@@ -1034,6 +1103,81 @@
             <button type="submit" class="btn btn-primary flex-1">
               <Gift class="w-4 h-4" />
               Apply Bonus
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Regrade All Modal -->
+{#if showRegradeModal}
+  <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-lg w-full">
+      <div class="p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
+              <RefreshCw class="w-5 h-5 text-orange-600" />
+            </div>
+            <div>
+              <h3 class="text-lg font-semibold text-gray-900">Regrade All Submissions</h3>
+              <p class="text-sm text-gray-500">{data.stats.graded} graded submission{data.stats.graded !== 1 ? 's' : ''} will be regraded</p>
+            </div>
+          </div>
+          <button onclick={() => (showRegradeModal = false)} class="text-gray-400 hover:text-gray-600">
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+          <div class="flex gap-2">
+            <AlertTriangle class="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+            <p class="text-sm text-amber-700">
+              This will clear all existing grades and regrade every submission through the AI grading queue. This cannot be undone.
+            </p>
+          </div>
+        </div>
+
+        <form method="POST" action="?/regradeAll" use:enhance={() => {
+          regrading = true;
+          return async ({ update }) => {
+            regrading = false;
+            showRegradeModal = false;
+            regradeInstructions = '';
+            await update();
+            await invalidateAll();
+          };
+        }}>
+          <div class="mb-4">
+            <label for="regrade-instructions" class="block text-sm font-medium text-gray-700 mb-2">
+              Additional Grading Instructions
+            </label>
+            <textarea
+              id="regrade-instructions"
+              name="extraInstructions"
+              bind:value={regradeInstructions}
+              class="input w-full min-h-[120px]"
+              placeholder="e.g., Be more lenient on spelling errors, accept alternative solutions for question 3, give full credit if the student shows the right approach even with minor errors..."
+            ></textarea>
+            <p class="text-xs text-gray-500 mt-1">
+              These instructions will be combined with the test's existing grading settings (harshness level, partial credit, etc.)
+            </p>
+          </div>
+
+          <div class="flex gap-3">
+            <button type="button" onclick={() => (showRegradeModal = false)} class="btn btn-secondary flex-1">
+              Cancel
+            </button>
+            <button type="submit" class="btn bg-orange-600 text-white hover:bg-orange-700 flex-1 flex items-center justify-center gap-2" disabled={regrading}>
+              {#if regrading}
+                <Loader2 class="w-4 h-4 animate-spin" />
+                Queuing...
+              {:else}
+                <RefreshCw class="w-4 h-4" />
+                Regrade All
+              {/if}
             </button>
           </div>
         </form>

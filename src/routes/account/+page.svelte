@@ -21,6 +21,7 @@
 
   let showDeleteModal = $state(false);
   let activeTab = $state('profile');
+  let pinEnabled = $state((() => (data.user as any).dashboardPinEnabled ?? false)());
 
   const timezones = [
     'America/New_York',
@@ -379,6 +380,71 @@
 
           <button type="submit" class="btn btn-primary">
             Update Password
+          </button>
+        </form>
+      </div>
+
+      <!-- Dashboard PIN Lock -->
+      <div class="card p-6">
+        <h2 class="text-lg font-semibold text-gray-900 mb-2">
+          <Shield class="w-5 h-5 inline mr-2" />
+          Dashboard PIN Lock
+        </h2>
+        <p class="text-sm text-gray-500 mb-4">
+          Set a 6-digit PIN to lock your teacher dashboard every 5 minutes. This prevents students from tampering with your computer when you step away.
+        </p>
+
+        {#if (form as any)?.pinSuccess}
+          <div class="alert alert-success mb-4">
+            <CheckCircle class="w-5 h-5" />
+            Dashboard PIN settings updated!
+          </div>
+        {/if}
+
+        {#if (form as any)?.pinError}
+          <div class="alert alert-error mb-4">
+            <AlertTriangle class="w-5 h-5" />
+            {(form as any).pinError}
+          </div>
+        {/if}
+
+        <form method="POST" action="?/updateDashboardPin" use:enhance class="space-y-4">
+          <label class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer">
+            <input
+              type="checkbox"
+              bind:checked={pinEnabled}
+              class="w-4 h-4 rounded"
+            />
+            <div>
+              <span class="font-medium text-gray-900">Enable PIN Lock</span>
+              <p class="text-sm text-gray-500">Require a 6-digit PIN to unlock your dashboard after 5 minutes of inactivity</p>
+            </div>
+          </label>
+
+          {#if pinEnabled}
+            <div>
+              <label for="dashboardPin" class="label">6-Digit PIN</label>
+              <input
+                type="text"
+                id="dashboardPin"
+                name="pin"
+                required
+                maxlength="6"
+                minlength="6"
+                pattern="\d{6}"
+                inputmode="numeric"
+                autocomplete="off"
+                class="input max-w-xs tracking-[0.5em] text-center text-lg [-webkit-text-security:disc]"
+                placeholder="······"
+              />
+              <p class="form-hint">Enter a 6-digit number you can easily remember</p>
+            </div>
+          {/if}
+
+          <input type="hidden" name="enabled" value={pinEnabled} />
+
+          <button type="submit" class="btn btn-primary">
+            {pinEnabled ? 'Save PIN' : 'Disable PIN Lock'}
           </button>
         </form>
       </div>

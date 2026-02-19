@@ -47,6 +47,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
                 select: {
                   id: true,
                   title: true,
+                  content: true,
                   owner: { select: { name: true } }
                 }
               }
@@ -99,7 +100,37 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   ]);
 
   const submissionMap = new Map(submissions.map(s => [s.testId, s]));
-  const studentDocMap = new Map(studentDocs.map(sd => [sd.assignmentId, sd]));
+  let studentDocMap = new Map(studentDocs.map(sd => [sd.assignmentId, sd]));
+
+  // Create missing StudentDocument records for MAKE_COPY assignments (e.g. student joined after assignment)
+  const makeCopyAssignments = membership.class.documentAssignments.filter(
+    da => da.type === 'MAKE_COPY' && !studentDocMap.has(da.id)
+  );
+  if (makeCopyAssignments.length > 0) {
+    const newDocs = await Promise.all(
+      makeCopyAssignments.map(da =>
+        prisma.studentDocument.create({
+          data: {
+            assignmentId: da.id,
+            studentId: locals.user!.id,
+            title: da.title || da.document.title,
+            content: da.document.content || '',
+            status: 'NOT_STARTED'
+          },
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            grade: true,
+            assignmentId: true
+          }
+        })
+      )
+    );
+    for (const sd of newDocs) {
+      studentDocMap.set(sd.assignmentId, sd);
+    }
+  }
 
   // Parse assignments
   const worksheets = membership.class.assignments

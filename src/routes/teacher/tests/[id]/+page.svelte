@@ -28,7 +28,8 @@
     Settings,
     PartyPopper,
     ClipboardList,
-    MessageSquare
+    MessageSquare,
+    Calendar
   } from 'lucide-svelte';
   import type { PageData, ActionData } from './$types';
 
@@ -37,6 +38,11 @@
   let showPreview = $state(false);
   let showPrintOptions = $state(false);
   let showStudyGuidePrompt = $state(false);
+  let showPublishModal = $state(false);
+  let publishEndDate = $state((() => {
+    const endDate = data.test.endDate;
+    return endDate ? new Date(endDate).toISOString().slice(0, 16) : '';
+  })());
   let selectedClassId = $state('');
   let generatingPdf = $state(false);
   let hasShownCreatedPrompt = $state(false);
@@ -343,12 +349,10 @@
         </button>
 
         {#if data.test.status === 'DRAFT'}
-          <form method="POST" action="?/publish" use:enhance>
-            <button type="submit" class="btn btn-primary" title="Make this test available for students to take">
-              <Eye class="w-4 h-4" />
-              Open for Students
-            </button>
-          </form>
+          <button type="button" onclick={() => (showPublishModal = true)} class="btn btn-primary" title="Make this test available for students to take">
+            <Eye class="w-4 h-4" />
+            Open for Students
+          </button>
         {:else}
           <form method="POST" action="?/unpublish" use:enhance>
             <button type="submit" class="btn btn-secondary" title="Students will no longer be able to access this test">
@@ -693,6 +697,74 @@
           <p class="text-xs text-gray-400 mt-2">This is a preview only</p>
         </div>
       </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Publish Timeframe Modal -->
+{#if showPublishModal}
+  <div
+    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+    onclick={(e) => e.target === e.currentTarget && (showPublishModal = false)}
+    onkeydown={(e) => e.key === 'Escape' && (showPublishModal = false)}
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+  >
+    <div class="card p-6 max-w-md mx-4 w-full">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+          <Calendar class="w-5 h-5 text-indigo-600" />
+        </div>
+        <div>
+          <h3 class="font-semibold text-gray-900">Set Test Close Date</h3>
+          <p class="text-sm text-gray-500">When should this test stop accepting submissions?</p>
+        </div>
+      </div>
+
+      <form method="POST" action="?/publish" use:enhance={() => {
+        return async ({ update }) => {
+          showPublishModal = false;
+          await update();
+        };
+      }}>
+        <div class="space-y-4">
+          <div>
+            <label for="publishEndDate" class="block text-sm font-medium text-gray-700 mb-1">
+              Close Date & Time
+            </label>
+            <input
+              id="publishEndDate"
+              type="datetime-local"
+              name="endDate"
+              bind:value={publishEndDate}
+              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            <p class="text-xs text-gray-500 mt-1">
+              The test will automatically stop accepting submissions at this time.
+            </p>
+          </div>
+
+          <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div class="flex items-start gap-2">
+              <AlertCircle class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p class="text-sm text-amber-700">
+                Don't forget to set a close date so students can't submit after the deadline.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex gap-3 mt-6">
+          <button type="button" onclick={() => (showPublishModal = false)} class="btn btn-secondary flex-1">
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary flex-1">
+            <Eye class="w-4 h-4" />
+            Open for Students
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 {/if}

@@ -16,7 +16,7 @@
     if (assignment.type === 'VIEW_ONLY') return { text: 'View', class: 'badge-blue' };
     if (!assignment.studentDocId) return { text: 'Start', class: 'badge-blue' };
     if (assignment.status === 'SUBMITTED') return { text: 'Submitted', class: 'badge-yellow' };
-    if (assignment.status === 'GRADED') return { text: `${assignment.grade || 0}%`, class: 'badge-green' };
+    if (assignment.grade !== null && assignment.grade !== undefined) return { text: `${assignment.grade}%`, class: 'badge-green' };
     return { text: 'In Progress', class: 'badge-yellow' };
   }
 

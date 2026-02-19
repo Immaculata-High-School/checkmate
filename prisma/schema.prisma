@@ -131,6 +131,8 @@ model User {
   lastLoginAt   DateTime?
   timezone      String       @default("America/New_York")
   locale        String       @default("en-US")
+  dashboardPin       String?      // 6-digit PIN for dashboard lock (hashed)
+  dashboardPinEnabled Boolean     @default(false) // Whether PIN lock is enabled
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
@@ -157,6 +159,7 @@ model User {
   gradingQueue        GradingQueue[] @relation("StudentGradingQueue")
   powerSchoolToken    PowerSchoolToken?
   powerSchoolReleases PowerSchoolGradeRelease[]
+  powerSchoolDocReleases PowerSchoolDocGradeRelease[] @relation("PowerSchoolDocReleases")
   powerSchoolMappings PowerSchoolStudentMapping[] @relation("PowerSchoolMappings")
   powerSchoolMappingsCreated PowerSchoolStudentMapping[] @relation("PowerSchoolMappingsCreated")
   ownedDocuments      Document[] @relation("OwnedDocuments")
@@ -481,7 +484,7 @@ model Test {
   status                 TestStatus @default(DRAFT)
   autoGrade              Boolean    @default(false)
   aiOpenEndedGrading     Boolean    @default(true) // AI grades non-MC questions on submit
-  showResultsImmediately Boolean    @default(true)
+  showResultsImmediately Boolean    @default(false)
   showCorrectAnswers     Boolean    @default(true) // Show correct answers after grading
   timeLimit              Int? // Time limit in minutes
   startDate              DateTime?
@@ -1050,6 +1053,7 @@ model Document {
   shares       DocumentShare[]
   classShares  DocumentClassShare[]
   assignments  DocumentAssignment[]
+  powerSchoolDocReleases PowerSchoolDocGradeRelease[]
 
   @@index([ownerId])
   @@index([organizationId])
@@ -1146,6 +1150,7 @@ model StudentDocument {
   student         User                      @relation("StudentDocuments", fields: [studentId], references: [id], onDelete: Cascade)
   activityEvents  DocumentActivityEvent[]   // Activity tracking events
   activitySummary DocumentActivitySummary?  // Aggregated analytics
+  powerSchoolRelease PowerSchoolDocGradeRelease?
 
   @@unique([assignmentId, studentId])
   @@index([assignmentId])
@@ -1284,6 +1289,34 @@ model PowerSchoolGradeRelease {
   @@unique([submissionId]) // One release per submission
   @@index([submissionId])
   @@index([testId])
+  @@index([releasedBy])
+  @@index([releasedAt])
+}
+
+// Grade release tracking for document assignments to PowerSchool
+model PowerSchoolDocGradeRelease {
+  id                String   @id @default(cuid())
+  studentDocId      String
+  documentId        String
+  studentEmail      String
+  psStudentId       Int?
+  psAssignmentId    Int?
+  sectionId         Int
+  categoryId        Int?
+  score             Float
+  totalPoints       Int
+  releasedBy        String
+  releasedAt        DateTime @default(now())
+  success           Boolean  @default(true)
+  error             String?
+
+  studentDocument   StudentDocument @relation(fields: [studentDocId], references: [id], onDelete: Cascade)
+  document          Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  releasedByUser    User            @relation("PowerSchoolDocReleases", fields: [releasedBy], references: [id])
+
+  @@unique([studentDocId])
+  @@index([studentDocId])
+  @@index([documentId])
   @@index([releasedBy])
   @@index([releasedAt])
 }

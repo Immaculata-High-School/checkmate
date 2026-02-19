@@ -17,17 +17,20 @@ export const GET: RequestHandler = async ({ request }) => {
 		const now = new Date();
 		
 		// Find all published tests that should be unpublished
+		// Check both autoUnpublishAt and endDate
 		const testsToUnpublish = await prisma.test.findMany({
 			where: {
 				status: 'PUBLISHED',
-				autoUnpublishAt: {
-					lte: now
-				}
+				OR: [
+					{ autoUnpublishAt: { lte: now } },
+					{ endDate: { lte: now } }
+				]
 			},
 			select: {
 				id: true,
 				title: true,
-				autoUnpublishAt: true
+				autoUnpublishAt: true,
+				endDate: true
 			}
 		});
 

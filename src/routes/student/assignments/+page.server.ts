@@ -27,7 +27,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   }
 
   // Run all independent queries in parallel
-  const [classTests, allAssignments, submissions, docAssignments, studentDocs] = await Promise.all([
+  const [classTests, allAssignments, submissions, docAssignments, studentDocs, makeCopyAssignments] = await Promise.all([
     // Get all tests assigned to active classes
     prisma.classTest.findMany({
       where: {
@@ -156,10 +156,79 @@ export const load: PageServerLoad = async ({ locals }) => {
         }
       },
       orderBy: { updatedAt: 'desc' }
+    }),
+    // Get all MAKE_COPY assignments in active classes (to find missing student docs)
+    prisma.documentAssignment.findMany({
+      where: {
+        classId: { in: activeClassIds },
+        type: 'MAKE_COPY'
+      },
+      select: {
+        id: true,
+        title: true,
+        dueDate: true,
+        points: true,
+        type: true,
+        document: {
+          select: {
+            id: true,
+            title: true,
+            content: true,
+            owner: { select: { name: true } }
+          }
+        },
+        class: { select: { id: true, name: true, emoji: true } }
+      }
     })
   ]);
 
   const submissionMap = new Map(submissions.map(s => [s.testId, s]));
+
+  // Create missing StudentDocument records for MAKE_COPY assignments (e.g. student joined after assignment)
+  const existingAssignmentIds = new Set(studentDocs.map(sd => sd.assignment.id));
+  const missingMakeCopy = makeCopyAssignments.filter(da => !existingAssignmentIds.has(da.id));
+  let allStudentDocs = [...studentDocs];
+  if (missingMakeCopy.length > 0) {
+    const newDocs = await Promise.all(
+      missingMakeCopy.map(da =>
+        prisma.studentDocument.create({
+          data: {
+            assignmentId: da.id,
+            studentId: locals.user!.id,
+            title: da.title || da.document.title,
+            content: da.document.content || '',
+            status: 'NOT_STARTED'
+          },
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            grade: true,
+            submittedAt: true,
+            assignment: {
+              select: {
+                id: true,
+                title: true,
+                instructions: true,
+                dueDate: true,
+                points: true,
+                type: true,
+                document: {
+                  select: {
+                    id: true,
+                    title: true,
+                    owner: { select: { name: true } }
+                  }
+                },
+                class: { select: { id: true, name: true, emoji: true } }
+              }
+            }
+          }
+        })
+      )
+    );
+    allStudentDocs = [...studentDocs, ...newDocs];
+  }
 
   // Organize tests by status
   const tests = classTests.map(ct => ({
@@ -225,7 +294,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       href: `/student/docs/${a.document.id}`
     })),
     // MAKE_COPY assignments (student's own copies)
-    ...studentDocs.map(sd => ({
+    ...allStudentDocs.map(sd => ({
       id: sd.id,
       assignmentId: sd.assignment.id,
       title: sd.title,

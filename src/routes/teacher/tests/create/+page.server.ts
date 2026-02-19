@@ -187,6 +187,7 @@ export const actions: Actions = {
         teacherId: locals.user!.id,
         status: status as 'DRAFT' | 'PUBLISHED',
         autoGrade,
+        showResultsImmediately: false,
         questions: {
           create: questions.map((q: any, i: number) => ({
             type: q.type,
@@ -266,6 +267,7 @@ export const actions: Actions = {
         teacherId: locals.user!.id,
         status: status as 'DRAFT' | 'PUBLISHED',
         autoGrade,
+        showResultsImmediately: false,
         questions: {
           create: questions.map((q: any, i: number) => ({
             type: q.type,

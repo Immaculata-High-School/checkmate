@@ -3,18 +3,12 @@
   import { goto, invalidateAll } from '$app/navigation';
   import {
     FileText,
-    User,
-    Clock,
     CheckCircle,
     AlertCircle,
-    X,
-    ChevronDown,
-    Search,
     Sparkles,
     Loader2,
-    GraduationCap,
     Eye,
-    MessageSquare
+    X
   } from 'lucide-svelte';
   import type { PageData, ActionData } from './$types';
 
@@ -122,17 +116,10 @@
     </div>
   </div>
 
-  {#if form?.aiSuccess}
+  {#if form?.aiQueued}
     <div class="alert alert-success mb-6">
       <CheckCircle class="w-5 h-5" />
-      {form.message || 'AI grading completed successfully!'}
-    </div>
-  {/if}
-
-  {#if (form as any)?.aiQueued}
-    <div class="alert alert-success mb-6">
-      <CheckCircle class="w-5 h-5" />
-      {form?.message || 'Submission queued for AI grading.'}
+      {form.message || 'Submission queued for AI grading.'}
     </div>
   {/if}
 

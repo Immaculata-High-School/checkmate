@@ -1091,6 +1091,435 @@ export async function releaseGradesToPowerSchool(
 }
 
 /**
+ * Release document grades to PowerSchool
+ * Similar to releaseGradesToPowerSchool but works with StudentDocument and DocumentAssignment
+ */
+export async function releaseDocGradesToPowerSchool(
+  userId: string,
+  documentId: string,
+  classId: string,
+  options: {
+    assignmentName?: string;
+    categoryId?: number;
+    dueDate?: string;
+    term?: string;
+    studentDocIds?: string[];
+    forceRerelease?: boolean;
+    markMissing?: boolean;
+    totalPoints?: number;
+  } = {}
+): Promise<{
+  success: boolean;
+  released: number;
+  failed: number;
+  markedMissing?: number;
+  errors: string[];
+  assignmentId?: number;
+  totalAttempted: number;
+  unmatchedStudents?: Array<{
+    studentId: string;
+    studentName: string;
+    studentEmail: string;
+  }>;
+}> {
+  const errors: string[] = [];
+  let released = 0;
+  let failed = 0;
+
+  // Get class mapping
+  const mapping = await prisma.powerSchoolClassMapping.findUnique({
+    where: { classId },
+    include: { class: true }
+  });
+
+  if (!mapping) {
+    throw new Error('Class is not linked to PowerSchool. Please set up the connection first.');
+  }
+
+  // Get document info
+  const document = await prisma.document.findUnique({
+    where: { id: documentId },
+    select: { id: true, title: true }
+  });
+
+  if (!document) {
+    throw new Error('Document not found');
+  }
+
+  // Get the assignment for this doc + class
+  const assignment = await prisma.documentAssignment.findUnique({
+    where: { documentId_classId: { documentId, classId } },
+    select: { id: true, points: true, title: true }
+  });
+
+  if (!assignment) {
+    throw new Error('Document is not assigned to this class');
+  }
+
+  const totalPoints = options.totalPoints || assignment.points || 100;
+
+  // Get graded student documents
+  const whereClause: any = {
+    assignmentId: assignment.id,
+    grade: { not: null }
+  };
+
+  if (!options.forceRerelease) {
+    whereClause.OR = [
+      { powerSchoolRelease: null },
+      { powerSchoolRelease: { success: false } }
+    ];
+  }
+
+  if (options.studentDocIds?.length) {
+    whereClause.id = { in: options.studentDocIds };
+  }
+
+  const studentDocs = await prisma.studentDocument.findMany({
+    where: whereClause,
+    include: {
+      student: { select: { id: true, email: true, name: true } },
+      powerSchoolRelease: true
+    }
+  });
+
+  if (studentDocs.length === 0) {
+    return { success: true, released: 0, failed: 0, errors: ['No graded submissions to release.'], totalAttempted: 0 };
+  }
+
+  // Delete existing release records for re-release
+  const existingReleaseIds = studentDocs
+    .filter(s => s.powerSchoolRelease)
+    .map(s => s.powerSchoolRelease!.id);
+
+  if (existingReleaseIds.length > 0) {
+    await prisma.powerSchoolDocGradeRelease.deleteMany({
+      where: { id: { in: existingReleaseIds } }
+    });
+  }
+
+  // Get saved student mappings
+  const savedMappings = await prisma.powerSchoolStudentMapping.findMany({
+    where: { classId }
+  });
+  const studentIdToPsId = new Map<string, number>();
+  for (const m of savedMappings) {
+    studentIdToPsId.set(m.studentId, m.psStudentId);
+  }
+
+  // Get PS section students
+  const psStudents = await getSectionStudents(userId, mapping.sectionId);
+  const psStudentById = new Map<number, PowerSchoolStudent>();
+  for (const s of psStudents) {
+    psStudentById.set(s.id, s);
+    if (s.dcid) psStudentById.set(s.dcid, s);
+  }
+
+  // Create name-based mappings
+  const nameToStudent = new Map<string, PowerSchoolStudent>();
+  const normalizedNameToStudent = new Map<string, PowerSchoolStudent>();
+
+  for (const student of psStudents) {
+    if (student.name) {
+      nameToStudent.set(student.name.toLowerCase(), student);
+    }
+    const normalizedName = `${student.first_name} ${student.last_name}`.toLowerCase().trim();
+    normalizedNameToStudent.set(normalizedName, student);
+    const lastFirstName = `${student.last_name}, ${student.first_name}`.toLowerCase().trim();
+    normalizedNameToStudent.set(lastFirstName, student);
+  }
+
+  // Reuse the same nickname and matching logic from the test release function
+  function findPsStudentForDoc(checkmateStudent: { id: string; name: string | null; email: string }): PowerSchoolStudent | null {
+    const savedPsId = studentIdToPsId.get(checkmateStudent.id);
+    if (savedPsId && psStudentById.has(savedPsId)) {
+      return psStudentById.get(savedPsId)!;
+    }
+
+    const emailPrefix = checkmateStudent.email.split('@')[0].toLowerCase();
+    for (const student of psStudents) {
+      const firstName = student.first_name?.toLowerCase() || '';
+      const lastName = student.last_name?.toLowerCase() || '';
+      const patterns = [
+        `${firstName}.${lastName}`,
+        `${firstName}${lastName}`,
+        `${firstName[0]}${lastName}`,
+        `${lastName}.${firstName}`,
+        `${lastName}${firstName}`,
+      ].filter(p => p.length > 2);
+      if (patterns.some(p => emailPrefix === p || emailPrefix.startsWith(p))) {
+        return student;
+      }
+    }
+
+    if (!checkmateStudent.name) return null;
+    const name = checkmateStudent.name.toLowerCase().trim();
+    if (nameToStudent.has(name)) return nameToStudent.get(name)!;
+    if (normalizedNameToStudent.has(name)) return normalizedNameToStudent.get(name)!;
+
+    // Score-based matching
+    const nameParts = name.split(/[\s,]+/).filter(p => p.length > 1);
+    let bestMatch: PowerSchoolStudent | null = null;
+    let bestScore = 0;
+    for (const student of psStudents) {
+      const firstName = student.first_name?.toLowerCase() || '';
+      const lastName = student.last_name?.toLowerCase() || '';
+      let score = 0;
+      for (const part of nameParts) {
+        if (part === firstName || firstName.includes(part) || part.includes(firstName)) score += 2;
+        else if (part === lastName || lastName.includes(part) || part.includes(lastName)) score += 2;
+      }
+      if (emailPrefix.includes(firstName) || emailPrefix.includes(lastName)) score += 1;
+      if (score > bestScore && score >= 2) {
+        bestScore = score;
+        bestMatch = student;
+      }
+    }
+    return bestMatch;
+  }
+
+  if (psStudents.length === 0) {
+    throw new Error('No students found in the selected PowerSchool section.');
+  }
+
+  // Create or find assignment in PowerSchool
+  const assignmentName = options.assignmentName || assignment.title || document.title;
+  const dueDate = options.dueDate || new Date().toISOString().split('T')[0];
+  const categoryId = options.categoryId;
+
+  if (!categoryId) {
+    throw new Error('Category is required when releasing grades to PowerSchool');
+  }
+
+  let existingAssignments: any[] = [];
+  try {
+    existingAssignments = await getAssignmentsAllTerms(userId, mapping.sectionId);
+  } catch (e) {
+    throw new Error('Failed to fetch assignments from PowerSchool.');
+  }
+
+  let psAssignment = existingAssignments.find((a: any) =>
+    a.name === assignmentName || a.description?.includes(`Checkmate Doc: ${documentId}`)
+  );
+
+  let psAssignmentId: number;
+
+  if (psAssignment) {
+    psAssignmentId = psAssignment.id;
+  } else {
+    const createResult = await createAssignment(userId, mapping.sectionId, {
+      name: assignmentName,
+      description: `Checkmate Doc: ${documentId}`,
+      due_date: dueDate,
+      points: totalPoints,
+      category_id: categoryId,
+      term: options.term
+    });
+
+    if (!createResult.success) {
+      throw new Error('Failed to create assignment in PowerSchool');
+    }
+
+    if (createResult.assignment_id) {
+      psAssignmentId = createResult.assignment_id;
+    } else if (createResult.assignment?.id) {
+      psAssignmentId = createResult.assignment.id;
+    } else if (typeof createResult.assignment === 'number') {
+      psAssignmentId = createResult.assignment;
+    } else {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      let updatedAssignments: any[] = [];
+      if (options.term) {
+        try { updatedAssignments = await getAssignments(userId, mapping.sectionId, options.term); } catch {}
+      }
+      if (updatedAssignments.length === 0) {
+        updatedAssignments = await getAssignmentsAllTerms(userId, mapping.sectionId);
+      }
+      psAssignment = updatedAssignments.find((a: any) =>
+        a.name === assignmentName || a.description?.includes(`Checkmate Doc: ${documentId}`)
+      );
+      if (!psAssignment) {
+        throw new Error('Assignment was created but could not be found. Please try again.');
+      }
+      psAssignmentId = psAssignment.id;
+    }
+  }
+
+  // Build score updates
+  const scoreUpdates: Array<{ student_id: number; score: number | null; comment?: string }> = [];
+  const studentSubmissions = new Map<number, typeof studentDocs[0]>();
+  const unmatchedStudentsList: Array<{ studentId: string; studentName: string; studentEmail: string }> = [];
+
+  for (const doc of studentDocs) {
+    const psStudent = findPsStudentForDoc(doc.student);
+
+    if (!psStudent) {
+      const studentName = doc.student.name || doc.student.email;
+      unmatchedStudentsList.push({ studentId: doc.student.id, studentName, studentEmail: doc.student.email });
+      errors.push(`"${studentName}" not found in PowerSchool class`);
+      failed++;
+      continue;
+    }
+
+    const studentId = psStudent.dcid || psStudent.id;
+    studentSubmissions.set(studentId, doc);
+
+    // Calculate percentage from grade / totalPoints
+    let scorePercent: number | null = null;
+    if (doc.grade !== null) {
+      scorePercent = Math.round((doc.grade / totalPoints) * 100);
+      scorePercent = Math.min(scorePercent, 100);
+    }
+
+    scoreUpdates.push({
+      student_id: studentId,
+      score: scorePercent,
+      comment: doc.feedback ? `Checkmate: ${doc.feedback.substring(0, 200)}` : undefined
+    });
+  }
+
+  // Batch update scores
+  if (scoreUpdates.length > 0) {
+    try {
+      const batchResult = await updateScoresBatch(userId, {
+        section_id: mapping.sectionId,
+        assignment_id: psAssignmentId,
+        scores: scoreUpdates
+      });
+
+      if (batchResult.success) {
+        for (const scoreUpdate of scoreUpdates) {
+          const doc = studentSubmissions.get(scoreUpdate.student_id);
+          if (doc) {
+            try {
+              await prisma.powerSchoolDocGradeRelease.create({
+                data: {
+                  studentDocId: doc.id,
+                  documentId,
+                  studentEmail: doc.student.email,
+                  psStudentId: scoreUpdate.student_id,
+                  psAssignmentId,
+                  sectionId: mapping.sectionId,
+                  categoryId,
+                  score: doc.grade || 0,
+                  totalPoints,
+                  releasedBy: userId,
+                  success: true
+                }
+              });
+              released++;
+            } catch {
+              released++;
+            }
+          }
+        }
+      }
+    } catch {
+      // Individual fallback
+      for (const scoreUpdate of scoreUpdates) {
+        const doc = studentSubmissions.get(scoreUpdate.student_id);
+        if (!doc) continue;
+
+        try {
+          await updateScore(userId, {
+            student_id: scoreUpdate.student_id,
+            assignment_id: psAssignmentId,
+            section_id: mapping.sectionId,
+            score: scoreUpdate.score,
+            comment: scoreUpdate.comment
+          });
+
+          await prisma.powerSchoolDocGradeRelease.create({
+            data: {
+              studentDocId: doc.id,
+              documentId,
+              studentEmail: doc.student.email,
+              psStudentId: scoreUpdate.student_id,
+              psAssignmentId,
+              sectionId: mapping.sectionId,
+              categoryId,
+              score: doc.grade || 0,
+              totalPoints,
+              releasedBy: userId,
+              success: true
+            }
+          });
+          released++;
+        } catch (e) {
+          errors.push(`Failed to update score for ${doc.student.email}: ${e instanceof Error ? e.message : 'Unknown error'}`);
+          await prisma.powerSchoolDocGradeRelease.create({
+            data: {
+              studentDocId: doc.id,
+              documentId,
+              studentEmail: doc.student.email,
+              sectionId: mapping.sectionId,
+              score: doc.grade || 0,
+              totalPoints,
+              releasedBy: userId,
+              success: false,
+              error: e instanceof Error ? e.message : 'Unknown error'
+            }
+          }).catch(() => {});
+          failed++;
+        }
+      }
+    }
+  }
+
+  if (unmatchedStudentsList.length > 0 && unmatchedStudentsList.length === studentDocs.length) {
+    errors.unshift(`⚠️ None of the ${studentDocs.length} students could be matched.`);
+  } else if (unmatchedStudentsList.length > studentDocs.length / 2) {
+    errors.unshift(`⚠️ ${unmatchedStudentsList.length} of ${studentDocs.length} students couldn't be matched.`);
+  }
+
+  // Mark missing students
+  let markedMissing = 0;
+  if (options.markMissing && psAssignmentId) {
+    const gradedPsStudentIds = new Set(scoreUpdates.map(s => s.student_id));
+    const missingScores: Array<{ student_id: number; score: number; is_missing: boolean }> = [];
+    for (const psStudent of psStudents) {
+      const psStudentId = psStudent.dcid || psStudent.id;
+      if (gradedPsStudentIds.has(psStudentId)) continue;
+      missingScores.push({ student_id: psStudentId, score: 0, is_missing: true });
+    }
+    if (missingScores.length > 0) {
+      try {
+        await updateScoresBatch(userId, {
+          section_id: mapping.sectionId,
+          assignment_id: psAssignmentId,
+          scores: missingScores
+        });
+        markedMissing = missingScores.length;
+      } catch {
+        for (const ms of missingScores) {
+          try {
+            await updateScore(userId, {
+              student_id: ms.student_id,
+              assignment_id: psAssignmentId,
+              section_id: mapping.sectionId,
+              score: 0,
+              is_missing: true
+            });
+            markedMissing++;
+          } catch {}
+        }
+      }
+    }
+  }
+
+  return {
+    success: failed === 0 && released > 0,
+    released,
+    failed,
+    markedMissing,
+    errors,
+    assignmentId: psAssignmentId,
+    totalAttempted: studentDocs.length,
+    unmatchedStudents: unmatchedStudentsList.length > 0 ? unmatchedStudentsList : undefined
+  };
+}
+
+/**
  * Check if user has PowerSchool connected
  */
 export async function isConnected(userId: string): Promise<boolean> {

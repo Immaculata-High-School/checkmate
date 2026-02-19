@@ -10,13 +10,16 @@
     ClipboardList,
     Sparkles,
     ExternalLink,
-    RefreshCw
+    RefreshCw,
+    StopCircle
   } from 'lucide-svelte';
   import type { PageData } from './$types';
   import { invalidateAll } from '$app/navigation';
+  import { enhance } from '$app/forms';
 
   let { data }: { data: PageData } = $props();
   let refreshing = $state(false);
+  let stopping = $state(false);
 
   async function refresh() {
     refreshing = true;
@@ -109,10 +112,30 @@
       </h1>
       <p class="text-gray-500 mt-1">Track your AI tasks and compute usage. These are metered and billed accordingly since they use resources.</p>
     </div>
-    <button onclick={refresh} disabled={refreshing} class="btn btn-secondary">
-      <RefreshCw class="w-4 h-4 {refreshing ? 'animate-spin' : ''}" />
-      Refresh
-    </button>
+    <div class="flex items-center gap-2">
+      {#if data.stats.running > 0 || data.stats.pending > 0}
+        <form
+          method="POST"
+          action="?/stopAll"
+          use:enhance={() => {
+            stopping = true;
+            return async ({ update }) => {
+              await update();
+              stopping = false;
+            };
+          }}
+        >
+          <button type="submit" disabled={stopping} class="btn btn-danger">
+            <StopCircle class="w-4 h-4" />
+            {stopping ? 'Stopping...' : 'Stop All Jobs'}
+          </button>
+        </form>
+      {/if}
+      <button onclick={refresh} disabled={refreshing} class="btn btn-secondary">
+        <RefreshCw class="w-4 h-4 {refreshing ? 'animate-spin' : ''}" />
+        Refresh
+      </button>
+    </div>
   </div>
 
   <!-- Stats -->

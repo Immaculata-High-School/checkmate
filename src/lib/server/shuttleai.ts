@@ -761,6 +761,7 @@ Return ONLY the JSON object. No markdown. No code blocks. Just pure JSON.`;
       }>;
       allowPartialCredit?: boolean;
       gradingHarshness?: number; // 0-100, where 0 is lenient and 100 is strict
+      extraInstructions?: string; // Additional grading instructions from teacher
     },
     context?: AIContext
   ): Promise<{
@@ -808,9 +809,13 @@ Student Answer: ${a.studentAnswer}`
       ? 'Award partial credit when appropriate based on how much of the answer is correct.'
       : 'Do NOT give partial credit. Award either full points (if completely correct) or zero points (if incorrect or incomplete).';
 
+    const extraInstructionsBlock = params.extraInstructions
+      ? `\n\nADDITIONAL TEACHER INSTRUCTIONS:\n${params.extraInstructions}\n`
+      : '';
+
     const systemPrompt = `You are an expert teacher grading a test. ${gradingStyle}
 
-${partialCreditInstruction}
+${partialCreditInstruction}${extraInstructionsBlock}
 
 SPECIAL INSTRUCTIONS FOR DIFFERENT QUESTION TYPES:
 

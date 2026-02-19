@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
 import type { RequestHandler } from './$types';
+import type { Prisma, DocumentEventType } from '@prisma/client';
 
 interface ActivityEvent {
   eventType: string;
@@ -55,18 +56,18 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
   }
 
   // Validate and transform events
-  const validEvents = events
+  const validEvents: Prisma.DocumentActivityEventCreateManyInput[] = events
     .filter(e => e.eventType && e.timestamp)
     .map(e => ({
       studentDocId: params.id,
-      eventType: e.eventType as any,
+      eventType: e.eventType as DocumentEventType,
       timestamp: new Date(e.timestamp),
       position: e.position || 0,
       endPosition: e.endPosition || null,
       content: e.content || null,
       contentLength: e.contentLength || (e.content?.length || 0),
       sessionId: e.sessionId || null,
-      metadata: e.metadata || null
+      metadata: e.metadata ? (e.metadata as Prisma.InputJsonValue) : undefined
     }));
 
   if (validEvents.length === 0) {

@@ -48,7 +48,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 };
 
 export const actions: Actions = {
-  publish: async ({ params, locals }) => {
+  publish: async ({ params, request, locals }) => {
     const test = await prisma.test.findUnique({
       where: { id: params.id }
     });
@@ -57,8 +57,22 @@ export const actions: Actions = {
       return fail(403, { error: 'Not authorized' });
     }
 
-    // Redirect to settings page with publish intent
-    throw redirect(302, `/teacher/tests/${params.id}/settings?publish=true`);
+    const formData = await request.formData();
+    const endDateStr = formData.get('endDate')?.toString();
+
+    const updateData: any = { status: 'PUBLISHED' };
+    if (endDateStr) {
+      const endDate = new Date(endDateStr);
+      updateData.endDate = endDate;
+      updateData.autoUnpublishAt = endDate; // Auto-close test at end date
+    }
+
+    await prisma.test.update({
+      where: { id: params.id },
+      data: updateData
+    });
+
+    return { success: true };
   },
 
   unpublish: async ({ params, locals }) => {

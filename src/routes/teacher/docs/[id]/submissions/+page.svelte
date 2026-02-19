@@ -337,7 +337,7 @@
   </div>
 
   <!-- Stats Cards -->
-  <div class="grid grid-cols-2 md:grid-cols-{powerSchoolEnabled && (data as any).powerSchool?.connected ? '7' : '6'} gap-4 mb-6">
+  <div class={`grid grid-cols-2 gap-4 mb-6 ${powerSchoolEnabled && (data as any).powerSchool?.connected ? 'md:grid-cols-7' : 'md:grid-cols-6'}`}>
     <button 
       onclick={() => statusFilter = 'all'}
       class="p-4 bg-white border rounded-lg text-center transition-all {statusFilter === 'all' ? 'ring-2 ring-emerald-500' : 'hover:shadow-md'}"
@@ -449,7 +449,7 @@
               <td class="px-4 py-3">
                 <div class="flex items-center gap-3">
                   <div class="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-sm font-medium text-gray-600">
-                    {(submission.student.name || submission.student.email)[0].toUpperCase()}
+                    {(submission.student.name || submission.student.email || '?')[0].toUpperCase()}
                   </div>
                   <div>
                     <div class="font-medium text-gray-900">{submission.student.name || 'Unknown'}</div>

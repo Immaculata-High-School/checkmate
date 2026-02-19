@@ -277,7 +277,7 @@
                       {statusInfo.label}
                     </span>
                     
-                    {#if work.grade !== null && work.grade !== undefined}
+                    {#if work.type === 'MAKE_COPY' && work.grade !== null && work.grade !== undefined}
                       <span class="text-sm font-medium text-emerald-600">
                         Grade: {work.grade}
                       </span>
@@ -303,7 +303,7 @@
                   </span>
                 </div>
 
-                {#if work.feedback}
+                {#if work.type === 'MAKE_COPY' && work.feedback}
                   <div class="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                     <div class="text-xs font-medium text-orange-700 mb-1">Teacher Feedback</div>
                     <p class="text-sm text-orange-800">{work.feedback}</p>

@@ -20,6 +20,7 @@
   import ChessKing from '$lib/components/ChessKing.svelte';
   import OrgDisabled from '$lib/components/OrgDisabled.svelte';
   import AIAssistant from '$lib/components/AIAssistant.svelte';
+  import PinLock from '$lib/components/PinLock.svelte';
   import type { LayoutData } from './$types';
   import NotificationBell from '$lib/components/NotificationBell.svelte';
   import LoadingBar from '$lib/components/LoadingBar.svelte';
@@ -199,4 +200,9 @@
 
 <!-- Global AI Assistant -->
 <AIAssistant />
+
+<!-- Dashboard PIN Lock -->
+{#if (data as any).dashboardPinEnabled}
+  <PinLock />
+{/if}
 {/if}

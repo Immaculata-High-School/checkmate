@@ -148,6 +148,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     runningJobsCount,
     orgDisabled,
     disabledOrgName,
-    powerSchoolEnabled: teacherMembership?.organization?.powerSchoolEnabled ?? true
+    powerSchoolEnabled: teacherMembership?.organization?.powerSchoolEnabled ?? true,
+    dashboardPinEnabled: locals.user?.dashboardPinEnabled ?? false
   };
 };
