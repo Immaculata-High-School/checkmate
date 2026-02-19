@@ -1,10 +1,20 @@
-import { fail } from '@sveltejs/kit';
+import { error, fail } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
 import { invalidateUserOrgCache } from '$lib/server/auth';
 import { sendOrganizationInvite, sendPasswordReset } from '$lib/server/email';
 import { generateCode } from '$lib/utils';
 import bcrypt from 'bcryptjs';
 import type { Actions, PageServerLoad } from './$types';
+
+async function requireOrgAdmin(slug: string, userId: string) {
+  const org = await prisma.organization.findUnique({ where: { slug }, select: { id: true } });
+  if (!org) throw error(404, 'Organization not found');
+  const membership = await prisma.organizationMember.findFirst({
+    where: { userId, organizationId: org.id, role: { in: ['ORG_OWNER', 'ORG_ADMIN'] }, isActive: true }
+  });
+  if (!membership) throw error(403, 'Not authorized');
+  return org;
+}
 
 export const load: PageServerLoad = async ({ params }) => {
   const organization = await prisma.organization.findUnique({
@@ -52,6 +62,9 @@ export const load: PageServerLoad = async ({ params }) => {
 
 export const actions: Actions = {
   invite: async ({ request, params, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const organization = await prisma.organization.findUnique({
       where: { slug: params.slug }
     });
@@ -124,6 +137,9 @@ export const actions: Actions = {
   },
 
   bulkInvite: async ({ request, params, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const organization = await prisma.organization.findUnique({
       where: { slug: params.slug }
     });
@@ -226,7 +242,10 @@ export const actions: Actions = {
     return { success: true, message, successCount, skipCount, errorCount: errors.length };
   },
 
-  cancelInvite: async ({ request, params }) => {
+  cancelInvite: async ({ request, params, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const formData = await request.formData();
     const inviteId = formData.get('inviteId')?.toString();
 
@@ -241,7 +260,10 @@ export const actions: Actions = {
     return { success: true };
   },
 
-  resetPassword: async ({ request, params }) => {
+  resetPassword: async ({ request, params, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const formData = await request.formData();
     const userId = formData.get('userId')?.toString();
 
@@ -279,7 +301,10 @@ export const actions: Actions = {
     return { success: true, message: `Password reset email sent to ${user.email}` };
   },
 
-  setTempPassword: async ({ request, params }) => {
+  setTempPassword: async ({ request, params, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const formData = await request.formData();
     const userId = formData.get('userId')?.toString();
 
@@ -299,7 +324,10 @@ export const actions: Actions = {
     return { success: true, tempPassword, message: 'Temporary password set. Share this with the teacher securely.' };
   },
 
-  removeTeacher: async ({ request, params }) => {
+  removeTeacher: async ({ request, params, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const formData = await request.formData();
     const memberId = formData.get('memberId')?.toString();
 
@@ -325,7 +353,10 @@ export const actions: Actions = {
     return { success: true };
   },
 
-  impersonate: async ({ request, params, cookies }) => {
+  impersonate: async ({ request, params, cookies, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const formData = await request.formData();
     const userId = formData.get('userId')?.toString();
 

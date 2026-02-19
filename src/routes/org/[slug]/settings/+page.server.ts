@@ -1,6 +1,16 @@
-import { fail } from '@sveltejs/kit';
+import { error, fail } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
 import type { Actions, PageServerLoad } from './$types';
+
+async function requireOrgAdmin(slug: string, userId: string) {
+  const org = await prisma.organization.findUnique({ where: { slug }, select: { id: true } });
+  if (!org) throw error(404, 'Organization not found');
+  const membership = await prisma.organizationMember.findFirst({
+    where: { userId, organizationId: org.id, role: { in: ['ORG_OWNER', 'ORG_ADMIN'] }, isActive: true }
+  });
+  if (!membership) throw error(403, 'Not authorized');
+  return org;
+}
 
 export const load: PageServerLoad = async ({ params }) => {
   const organization = await prisma.organization.findUnique({
@@ -23,7 +33,10 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions: Actions = {
-  updateOrganization: async ({ request, params }) => {
+  updateOrganization: async ({ request, params, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const organization = await prisma.organization.findUnique({
       where: { slug: params.slug }
     });
@@ -65,7 +78,10 @@ export const actions: Actions = {
     return { success: true, message: 'Organization settings updated' };
   },
 
-  updateBranding: async ({ request, params }) => {
+  updateBranding: async ({ request, params, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const organization = await prisma.organization.findUnique({
       where: { slug: params.slug }
     });
@@ -91,7 +107,10 @@ export const actions: Actions = {
     return { brandingSuccess: true, message: 'Branding settings updated' };
   },
 
-  createDepartment: async ({ request, params }) => {
+  createDepartment: async ({ request, params, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const organization = await prisma.organization.findUnique({
       where: { slug: params.slug }
     });
@@ -117,7 +136,10 @@ export const actions: Actions = {
     return { deptSuccess: true };
   },
 
-  deleteDepartment: async ({ request, params }) => {
+  deleteDepartment: async ({ request, params, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const formData = await request.formData();
     const departmentId = formData.get('departmentId')?.toString();
 

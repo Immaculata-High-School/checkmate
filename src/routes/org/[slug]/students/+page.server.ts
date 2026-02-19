@@ -1,4 +1,4 @@
-import { fail } from '@sveltejs/kit';
+import { error, fail } from '@sveltejs/kit';
 import { prisma } from '$lib/server/db';
 import { invalidateUserOrgCache } from '$lib/server/auth';
 import { sendPasswordReset } from '$lib/server/email';
@@ -6,7 +6,17 @@ import { generateCode } from '$lib/utils';
 import bcrypt from 'bcryptjs';
 import type { Actions, PageServerLoad } from './$types';
 
-const PAGE_SIZE = 50; // Load 50 students at a time
+const PAGE_SIZE = 50;
+
+async function requireOrgAdmin(slug: string, userId: string) {
+  const org = await prisma.organization.findUnique({ where: { slug }, select: { id: true } });
+  if (!org) throw error(404, 'Organization not found');
+  const membership = await prisma.organizationMember.findFirst({
+    where: { userId, organizationId: org.id, role: { in: ['ORG_OWNER', 'ORG_ADMIN'] }, isActive: true }
+  });
+  if (!membership) throw error(403, 'Not authorized');
+  return org;
+}
 
 export const load: PageServerLoad = async ({ params, url }) => {
   const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
@@ -92,13 +102,23 @@ export const load: PageServerLoad = async ({ params, url }) => {
 };
 
 export const actions: Actions = {
-  impersonate: async ({ request, params, cookies }) => {
+  impersonate: async ({ request, params, cookies, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const formData = await request.formData();
     const userId = formData.get('userId')?.toString();
 
     if (!userId) {
       return fail(400, { error: 'User ID required' });
     }
+
+    // Verify the target user is a student in this org
+    const org = await prisma.organization.findUnique({ where: { slug: params.slug }, select: { id: true } });
+    const targetMember = await prisma.organizationMember.findFirst({
+      where: { userId, organizationId: org!.id, role: 'STUDENT' }
+    });
+    if (!targetMember) return fail(400, { error: 'Student not found in this organization' });
 
     const sessionId = generateCode(32);
     const expiresAt = new Date();
@@ -138,7 +158,10 @@ export const actions: Actions = {
     return { impersonating: true, redirect: '/student' };
   },
 
-  resetPassword: async ({ request }) => {
+  resetPassword: async ({ request, params, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const formData = await request.formData();
     const userId = formData.get('userId')?.toString();
 
@@ -175,7 +198,10 @@ export const actions: Actions = {
     return { success: true, message: `Password reset email sent to ${user.email}` };
   },
 
-  setTempPassword: async ({ request }) => {
+  setTempPassword: async ({ request, params, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const formData = await request.formData();
     const userId = formData.get('userId')?.toString();
 
@@ -194,7 +220,10 @@ export const actions: Actions = {
     return { success: true, tempPassword, message: 'Temporary password set.' };
   },
 
-  toggleSuspend: async ({ request }) => {
+  toggleSuspend: async ({ request, params, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const formData = await request.formData();
     const userId = formData.get('userId')?.toString();
 
@@ -219,7 +248,10 @@ export const actions: Actions = {
     return { success: true, message: user.suspended ? 'Student unsuspended' : 'Student suspended' };
   },
 
-  removeStudent: async ({ request }) => {
+  removeStudent: async ({ request, params, locals }) => {
+    if (!locals.user) throw error(401, 'Not authenticated');
+    await requireOrgAdmin(params.slug, locals.user.id);
+
     const formData = await request.formData();
     const memberId = formData.get('memberId')?.toString();
 

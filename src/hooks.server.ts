@@ -88,6 +88,21 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
 
   if (user) {
+    // Block suspended users — invalidate session and redirect to login
+    if (user.suspended) {
+      await lucia.invalidateSession(session.id);
+      const sessionCookie = lucia.createBlankSessionCookie();
+      event.cookies.set(sessionCookie.name, sessionCookie.value, {
+        path: '.',
+        ...sessionCookie.attributes
+      });
+      event.locals.user = null;
+      event.locals.session = null;
+      event.locals.orgMemberships = [];
+      event.locals.effectiveRole = 'guest';
+      return resolve(event);
+    }
+
     const orgMemberships = await getUserOrgMemberships(user.id);
     const effectiveRole = getEffectiveRole(user.platformRole, orgMemberships);
 
