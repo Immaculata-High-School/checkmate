@@ -8,7 +8,13 @@
   let loading = $state(false);
   let step = $state<'code' | 'auth'>(form?.step === 'register' || form?.step === 'login' ? 'auth' : 'code');
   let isNewUser = $state(true);
-  let classCode = $state<string>(data.code || (form && 'classCode' in form ? form.classCode as string : '') || '');
+  let classCode = $state<string>(data.code || '');
+
+  $effect(() => {
+    if (form && 'classCode' in form) {
+      classCode = (form.classCode as string) || '';
+    }
+  });
 </script>
 
 <div class="min-h-screen bg-gray-50 py-12 px-4">

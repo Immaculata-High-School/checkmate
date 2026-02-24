@@ -143,7 +143,7 @@
   {/if}
 
   <!-- Users List -->
-  <div class="card overflow-hidden">
+  <div class="card">
     <table class="w-full">
       <thead class="bg-gray-50 border-b border-gray-200">
         <tr>
@@ -208,7 +208,7 @@
                   <MoreVertical class="w-5 h-5 text-gray-400" />
                 </button>
                 {#if openMenu === user.id}
-                  <div class="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
+                  <div class="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
                     <form method="POST" action="?/impersonate" use:enhance>
                       <input type="hidden" name="userId" value={user.id} />
                       <button type="submit" class="w-full flex items-center gap-2 px-4 py-2 text-sm text-indigo-600 hover:bg-gray-100">

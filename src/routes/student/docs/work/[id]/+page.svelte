@@ -21,8 +21,8 @@
 
   let { data }: { data: PageData } = $props();
 
-  let title = $state(data.document.title);
-  let content = $state(data.document.content || '');
+  let title = $state('');
+  let content = $state('');
   let saving = $state(false);
   let lastSaved = $state<Date | null>(null);
   let showSubmitConfirm = $state(false);
@@ -31,7 +31,13 @@
 
   // Activity tracking
   let tracker: DocumentActivityTracker | null = $state(null);
-  let trackingEnabled = $state(data.document.monitoringEnabled ?? true);
+  let trackingEnabled = $state(true);
+
+  $effect(() => {
+    title = data.document.title;
+    content = data.document.content || '';
+    trackingEnabled = data.document.monitoringEnabled ?? true;
+  });
 
   const canEdit = $derived(data.document.canEdit);
   const isSubmitted = $derived(data.document.status === 'SUBMITTED' || data.document.status === 'RESUBMITTED');

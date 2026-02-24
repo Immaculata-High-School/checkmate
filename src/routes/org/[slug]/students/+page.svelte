@@ -26,7 +26,11 @@
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
-  let searchInput = $state(data.search || '');
+  let searchInput = $state('');
+
+  $effect(() => {
+    searchInput = data.search || '';
+  });
   let searchTimeout: ReturnType<typeof setTimeout>;
   let openMenu = $state<string | null>(null);
   let showPasswordModal = $state<any>(null);
@@ -123,7 +127,7 @@
   </div>
 
   <!-- Students Table -->
-  <div class="card overflow-hidden">
+  <div class="card">
     <table class="w-full">
       <thead class="bg-gray-50 border-b border-gray-200">
         <tr>
@@ -178,7 +182,7 @@
                   <MoreVertical class="w-5 h-5 text-gray-400" />
                 </button>
                 {#if openMenu === student.id}
-                  <div class="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
+                  <div class="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
                     <form method="POST" action="?/impersonate" use:enhance={() => {
                       return async ({ result }) => {
                         if (result.type === 'success' && (result.data as any)?.redirect) {

@@ -26,8 +26,8 @@
   let { form, data }: { form: ActionData; data: PageData } = $props();
 
   // Check if we're continuing from a saved job
-  const savedJob = data.savedJob;
-  const savedOutput = savedJob?.output;
+  const savedJob = $derived(data.savedJob);
+  const savedOutput = $derived(savedJob?.output);
 
   let selectedClassId = $state('');
 
@@ -267,8 +267,9 @@
       >
         <!-- Topic -->
         <div class="bg-white rounded-xl border border-gray-200 p-6">
-          <label class="block text-sm font-medium text-gray-700 mb-2">Topic or Subject</label>
+          <label for="topic" class="block text-sm font-medium text-gray-700 mb-2">Topic or Subject</label>
           <input
+            id="topic"
             name="topic"
             type="text"
             required
@@ -281,9 +282,9 @@
 
         <!-- File Upload Section -->
         <div class="bg-white rounded-xl border border-gray-200 p-6">
-          <label class="block text-sm font-medium text-gray-700 mb-2">
+          <span class="block text-sm font-medium text-gray-700 mb-2">
             Upload Source Material (Optional)
-          </label>
+          </span>
           <p class="text-sm text-gray-500 mb-4">
             Upload a PDF with content to base the worksheet on. AI will extract and use the text to generate items. 
             <span class="text-amber-600 font-medium">Uses 2x AI credits.</span>
@@ -366,8 +367,9 @@
         <div class="grid md:grid-cols-2 gap-6">
           <!-- Number of Items -->
           <div class="bg-white rounded-xl border border-gray-200 p-6">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Number of Items</label>
+            <label for="numberOfItems" class="block text-sm font-medium text-gray-700 mb-2">Number of Items</label>
             <input
+              id="numberOfItems"
               name="numberOfItems"
               type="range"
               min="5"
@@ -384,7 +386,7 @@
 
           <!-- Difficulty -->
           <div class="bg-white rounded-xl border border-gray-200 p-6">
-            <label class="block text-sm font-medium text-gray-700 mb-3">Difficulty Level</label>
+            <span class="block text-sm font-medium text-gray-700 mb-3">Difficulty Level</span>
             <div class="flex gap-2">
               {#each difficultyOptions as level}
                 <button
@@ -404,7 +406,7 @@
 
         <!-- Item Types -->
         <div class="bg-white rounded-xl border border-gray-200 p-6">
-          <label class="block text-sm font-medium text-gray-700 mb-4">Question Types</label>
+          <span class="block text-sm font-medium text-gray-700 mb-4">Question Types</span>
           <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
             {#each itemTypes as type}
               {@const Icon = type.icon}

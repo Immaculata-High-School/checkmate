@@ -46,7 +46,11 @@
   let showRosterSyncNeededModal = $state(false);
   let psReleasing = $state(false);
   let psSelectedClass = $state('');
-  let psAssignmentName = $state(data.document.title);
+  let psAssignmentName = $state('');
+
+  $effect(() => {
+    psAssignmentName = data.document.title;
+  });
   let psSelectedCategory = $state('');
   let psDueDate = $state(new Date().toISOString().split('T')[0]);
   let psSelectedTerm = $state('');
@@ -559,10 +563,11 @@
 
       <div class="p-6 space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">
+          <label for="grade-input" class="block text-sm font-medium text-gray-700 mb-2">
             Grade {#if selectedSubmission.assignment.points}(out of {selectedSubmission.assignment.points}){/if}
           </label>
           <input
+            id="grade-input"
             type="number"
             bind:value={gradeValue}
             placeholder="Enter grade..."
@@ -572,8 +577,9 @@
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Feedback</label>
+          <label for="feedback-input" class="block text-sm font-medium text-gray-700 mb-2">Feedback</label>
           <textarea
+            id="feedback-input"
             bind:value={feedbackValue}
             placeholder="Add feedback for the student..."
             class="input w-full"
@@ -688,10 +694,11 @@
 
           <!-- Assignment Name -->
           <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-700 mb-1">
+            <label for="ps-assignment-name" class="block text-sm font-medium text-gray-700 mb-1">
               Assignment Name in PowerSchool
             </label>
             <input 
+              id="ps-assignment-name"
               type="text" 
               name="assignmentName" 
               bind:value={psAssignmentName}
@@ -702,10 +709,11 @@
 
           <!-- Total Points -->
           <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-700 mb-1">
+            <label for="ps-total-points" class="block text-sm font-medium text-gray-700 mb-1">
               Total Points
             </label>
             <input 
+              id="ps-total-points"
               type="number" 
               name="totalPoints" 
               bind:value={psTotalPoints}
@@ -718,10 +726,11 @@
 
           <!-- Category -->
           <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-700 mb-1">
+            <label for="ps-category" class="block text-sm font-medium text-gray-700 mb-1">
               Category <span class="text-red-500">*</span>
             </label>
             <select 
+              id="ps-category"
               name="categoryId" 
               bind:value={psSelectedCategory}
               class="input w-full"
@@ -738,10 +747,11 @@
           <!-- Term Selection -->
           {#if psTerms && psTerms.store_codes && psTerms.store_codes.length > 0}
             <div class="mb-4">
-              <label class="block text-sm font-medium text-gray-700 mb-1">
+              <label for="ps-term" class="block text-sm font-medium text-gray-700 mb-1">
                 Grading Period / Term
               </label>
               <select 
+                id="ps-term"
                 name="term" 
                 bind:value={psSelectedTerm}
                 class="input w-full"
@@ -758,10 +768,11 @@
 
           <!-- Due Date -->
           <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-700 mb-1">
+            <label for="ps-due-date" class="block text-sm font-medium text-gray-700 mb-1">
               Due Date
             </label>
             <input 
+              id="ps-due-date"
               type="date" 
               name="dueDate" 
               bind:value={psDueDate}

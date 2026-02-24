@@ -15,9 +15,8 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"db:generate": "prisma generate",
 		"db:push": "prisma db push",
-		"db:migrate": "prisma migrate dev",
-		"db:studio": "prisma studio",
-		"db:reset": "prisma db push --force-reset"
+		"db:migrate": "prisma migrate deploy",
+		"db:studio": "prisma studio"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.0",

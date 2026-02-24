@@ -34,7 +34,7 @@
   }: Props = $props();
 
   let editorEl: HTMLDivElement;
-  let toolbarEl: HTMLDivElement;
+  let toolbarEl = $state<HTMLDivElement>(undefined!);
   let wordCount = $state(0);
   let charCount = $state(0);
   let pageCount = $state(1);
@@ -458,7 +458,7 @@
             <div class="color-picker">
               <div class="color-grid">
                 {#each colors as c}
-                  <button type="button" class="color-swatch" style="background:{c}" onclick={() => { execCommand('foreColor', c); showColorPicker = false; }}></button>
+                  <button type="button" class="color-swatch" style="background:{c}" onclick={() => { execCommand('foreColor', c); showColorPicker = false; }} aria-label="Set text color to {c}"></button>
                 {/each}
               </div>
               <input type="color" value={currentColor} onchange={(e) => { execCommand('foreColor', e.currentTarget.value); showColorPicker = false; }} />
@@ -474,9 +474,9 @@
           {#if showBgColorPicker}
             <div class="color-picker">
               <div class="color-grid">
-                <button type="button" class="color-swatch no-color" onclick={() => { execCommand('removeFormat'); showBgColorPicker = false; }}><X size={10} /></button>
+                <button type="button" class="color-swatch no-color" onclick={() => { execCommand('removeFormat'); showBgColorPicker = false; }} aria-label="Remove highlight"><X size={10} /></button>
                 {#each colors as c}
-                  <button type="button" class="color-swatch" style="background:{c}" onclick={() => { execCommand('hiliteColor', c); showBgColorPicker = false; }}></button>
+                  <button type="button" class="color-swatch" style="background:{c}" onclick={() => { execCommand('hiliteColor', c); showBgColorPicker = false; }} aria-label="Set highlight color to {c}"></button>
                 {/each}
               </div>
             </div>

@@ -127,7 +127,7 @@
   {/if}
 
   <!-- Teachers List -->
-  <div class="card overflow-hidden">
+  <div class="card">
     <table class="w-full">
       <thead class="bg-gray-50 border-b border-gray-200">
         <tr>
@@ -171,7 +171,7 @@
                   <MoreVertical class="w-5 h-5 text-gray-400" />
                 </button>
                 {#if openMenu === member.id}
-                  <div class="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
+                  <div class="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
                     {#if member.role !== 'ORG_OWNER'}
                       <form method="POST" action="?/impersonate" use:enhance={() => {
                         return async ({ result }) => {
@@ -219,8 +219,6 @@
     </table>
   </div>
 </div>
-
-<!-- Click outside to close menu -->
 {#if openMenu}
   <div
     class="fixed inset-0 z-5"

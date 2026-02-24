@@ -39,10 +39,17 @@
   let isOwner = $derived(data.document.isOwner);
 
   // Local state for editing
-  let title = $state(data.document.title);
-  let content = $state(data.document.content || '');
-  let showShareModal = $state(data.showShareModal || false);
-  let showAssignModal = $state(data.showAssignModal || false);
+  let title = $state('');
+  let content = $state('');
+  let showShareModal = $state(false);
+  let showAssignModal = $state(false);
+
+  $effect(() => {
+    title = data.document.title;
+    content = data.document.content || '';
+    showShareModal = data.showShareModal || false;
+    showAssignModal = data.showAssignModal || false;
+  });
   let showDeleteConfirm = $state(false);
   let shareEmail = $state('');
   let shareCanEdit = $state(false);
@@ -557,8 +564,9 @@
 
             <!-- Custom prompt -->
             <div class="ai-input-section">
-              <label class="text-xs font-medium text-gray-700 mb-1 block">Or describe what you want:</label>
+              <label for="ai-prompt" class="text-xs font-medium text-gray-700 mb-1 block">Or describe what you want:</label>
               <textarea
+                id="ai-prompt"
                 bind:value={aiPrompt}
                 placeholder="e.g., Write an introduction about climate change..."
                 class="ai-textarea"
@@ -1133,10 +1141,6 @@
       font-size: 16px;
     }
 
-    .share-button span:not(:first-child) {
-      display: none;
-    }
-
     .share-button {
       padding: 8px 12px;
     }
@@ -1338,7 +1342,7 @@
 
         <!-- Assignment Type -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-3">Assignment Type</label>
+          <span class="block text-sm font-medium text-gray-700 mb-3">Assignment Type</span>
           <div class="grid grid-cols-2 gap-3">
             <button
               onclick={() => assignType = 'VIEW_ONLY'}
@@ -1366,9 +1370,9 @@
 
         <!-- Select Class -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-2">Select Class</label>
+          <label for="assign-class" class="block text-sm font-medium text-gray-700 mb-2">Select Class</label>
           {#if availableClassesForAssignment.length > 0}
-            <select bind:value={assignClassId} class="input w-full">
+            <select id="assign-class" bind:value={assignClassId} class="input w-full">
               <option value="">Choose a class...</option>
               {#each availableClassesForAssignment as cls}
                 <option value={cls.id}>{cls.emoji} {cls.name} ({cls._count.members} students)</option>
@@ -1382,8 +1386,9 @@
         <!-- Instructions (for MAKE_COPY) -->
         {#if assignType === 'MAKE_COPY'}
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Instructions (optional)</label>
+            <label for="assign-instructions" class="block text-sm font-medium text-gray-700 mb-2">Instructions (optional)</label>
             <textarea
+              id="assign-instructions"
               bind:value={assignInstructions}
               placeholder="Add instructions for students..."
               class="input w-full"
